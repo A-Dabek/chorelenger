@@ -116,3 +116,10 @@ Append-only record of everything that happens in this project. See `AGENTS.md` f
 - Decisions: no DB constraint on category so old values stay valid; one-off finished = has any completion; spotlight matching on legacy categories like `dog` no longer matches new chores (name matching still works).
 - Verification: `npm test` and `npm run build` pass; db:reset checked manually. Playwright e2e not run.
 - Open issues: e2e specs updated but not executed.
+
+## 2026-10-10 22:30 — Refine calendar events (past filter, recurrence, Today acknowledgement)
+- Requested: sync only current/future events, never re-import past ones, acknowledge calendar events from Today instead of Planned; recurring events as a single repeating item.
+- Changed: `server/calendar.js` parses RRULE/EXDATE/RECURRENCE-ID (overrides ignored), adds `nextOccurrence`/`resolveUpcoming`; `server/db.js` adds `rrule`/`exdates` columns; `server/app.js` shared `upsertCalendarEvents` for sync + import-ics (past one-off rows untouched; recurring row advancing resets to pending), `recurring` in API; web: no Acknowledge on Planned (🔁 marker), bottom "Calendar" section on Today, App reloads on tab change; e2e/tests/README updated.
+- Decisions: unsupported RRULE parts fall back to DTSTART only; UTC `Z` times still treated as local (unchanged).
+- Verification: `npm test` 35 pass; `npm run build` ok; e2e planned-items 6 pass. `today-grid.spec.js` "confirm sheet" fails also without my changes (icon expectation 'V' vs '📌'), pre-existing.
+- Follow-up: previously imported recurring rows get rrule on next sync.

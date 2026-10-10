@@ -53,7 +53,7 @@ test.describe('Planned Items & Calendar Sync', () => {
     await expect(page.locator('.planned-card:has-text("Deliver package to post office") button.done-btn')).toHaveText('Done');
   });
 
-  test('configures calendar feed URL and imports .ics events with Acknowledge workflow', async ({ page }) => {
+  test('configures calendar feed URL and imports .ics events without Planned-tab acknowledge', async ({ page }) => {
     await page.click('nav button:has-text("Planned")');
 
     // Open Feed Settings
@@ -94,15 +94,39 @@ test.describe('Planned Items & Calendar Sync', () => {
     await expect(calCard.locator('.source-badge')).toHaveClass(/calendar/);
     await expect(calCard.locator('.meta')).toContainText('Dental Health Center');
 
-    // Calendar events have "Acknowledge" button instead of "Done" and no Google Cal link (already in calendar)
+    // Calendar events have no Acknowledge/Done button on the Planned tab and no Google Cal link
     await expect(calCard.locator('a.gcal-link')).not.toBeVisible();
-    const ackBtn = calCard.locator('button.done-btn:has-text("Acknowledge")');
-    await expect(ackBtn).toBeVisible();
+    await expect(calCard.locator('button')).toHaveCount(0);
 
-    // Click Acknowledge
-    await ackBtn.click();
-    await expect(page.locator('.toast')).toContainText('Acknowledged: Dentist Cleaning Appointment ✓');
-    await expect(page.locator('section:has-text("Completed & Acknowledged") .planned-card')).toContainText('Dentist Cleaning Appointment');
+    // Acknowledge from the Today tab 'Calendar' section instead (event is in the future, so not listed yet)
+    await page.click('nav button:has-text("Today")');
+    await expect(page.locator('.calendar-section')).not.toBeVisible();
+  });
+
+  test('acknowledges due calendar event from Today with undo', async ({ page }) => {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    const todayCompact = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
+    await page.click('nav button:has-text("Planned")');
+    await page.locator('#ics-file-input').setInputFiles({
+      name: 'today.ics',
+      mimeType: 'text/calendar',
+      buffer: Buffer.from([
+        'BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'UID:e2e-today@x', 'SUMMARY:Dentist Today',
+        `DTSTART;VALUE=DATE:${todayCompact}`, 'END:VEVENT', 'END:VCALENDAR',
+      ].join('\r\n')),
+    });
+    await expect(page.locator('.planned-card:has-text("Dentist Today")')).toBeVisible();
+
+    await page.click('nav button:has-text("Today")');
+    const item = page.locator('.calendar-section .cal-item:has-text("Dentist Today")');
+    await expect(item).toBeVisible();
+    await item.click();
+    await expect(page.locator('.toast')).toContainText('Acknowledged: Dentist Today ✓');
+    await expect(item).toBeDisabled();
+
+    await page.click('.toast button:has-text("Undo")');
+    await expect(item).toBeEnabled();
   });
 
   test('edits and deletes planned item', async ({ page }) => {
@@ -129,10 +153,9 @@ test.describe('Planned Items & Calendar Sync', () => {
     await expect(page.locator('.empty')).toContainText('No planned items');
   });
 
-  test('correctly categorizes past events into Overdue without polluting Today section', async ({ page }) => {
+  test('import skips past events and keeps upcoming ones', async ({ page }) => {
     await page.click('nav button:has-text("Planned")');
 
-    // Import .ics containing a past event (e.g. from 2018) and a future event
     const icsContent = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
@@ -142,9 +165,9 @@ test.describe('Planned Items & Calendar Sync', () => {
       'DTSTART;VALUE=DATE:20180424',
       'END:VEVENT',
       'BEGIN:VEVENT',
-      'UID:upcoming-event-2026@google.com',
+      'UID:upcoming-event-2036@google.com',
       'SUMMARY:Upcoming Trip Next Week',
-      'DTSTART;VALUE=DATE:20261015',
+      'DTSTART;VALUE=DATE:20361015',
       'END:VEVENT',
       'END:VCALENDAR',
     ].join('\r\n');
@@ -155,18 +178,8 @@ test.describe('Planned Items & Calendar Sync', () => {
       buffer: Buffer.from(icsContent),
     });
 
-    // Verify "Ancient Meeting from 2018" is in Overdue section and NOT in Today
-    const overdueSection = page.locator('section:has-text("Overdue")');
-    await expect(overdueSection).toBeVisible();
-    await expect(overdueSection).toContainText('Ancient Meeting from 2018');
-    await expect(overdueSection).toContainText('2018-04-24');
-
-    // Today section should not exist or not contain the 2018 event
-    await expect(page.locator('section:has-text("Today")')).not.toBeVisible();
-
-    // Upcoming section should contain upcoming event
-    const upcomingSection = page.locator('section:has-text("Upcoming")');
-    await expect(upcomingSection).toContainText('Upcoming Trip Next Week');
+    await expect(page.locator('.planned-card:has-text("Upcoming Trip Next Week")')).toBeVisible();
+    await expect(page.locator('.planned-card:has-text("Ancient Meeting from 2018")')).toHaveCount(0);
   });
 
   test('mobile viewport renders Planned tab without horizontal overflow', async ({ page }) => {

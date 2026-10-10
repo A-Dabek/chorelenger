@@ -24,6 +24,7 @@ function PlannedItemCard({ item, onConfirm, onEdit }) {
             {isCalendar ? '📅 Calendar Event' : '📝 One-Off Task'}
           </span>
           {item.title}
+          {item.recurring && <span title="Repeats" aria-label="Repeats"> 🔁</span>}
         </div>
         <div class="meta">
           <b>{item.start_date}</b>
@@ -46,9 +47,9 @@ function PlannedItemCard({ item, onConfirm, onEdit }) {
             📅 Google Cal
           </a>
         )}
-        {!isCompleted && onConfirm && (
+        {!isCompleted && !isCalendar && onConfirm && (
           <button class="done-btn" onClick={() => onConfirm(item)}>
-            {isCalendar ? 'Acknowledge' : 'Done'}
+            Done
           </button>
         )}
       </div>

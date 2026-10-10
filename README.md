@@ -12,7 +12,8 @@ Implemented:
   - One-off task tracking with date, time, location, notes, and 1-tap "Add to Google Calendar" web intent links.
   - Read-only calendar sync via private iCal feed URL polling (`webcal://` or `https://...basic.ics`) and drag-and-drop `.ics` file import.
   - Visual source differentiation (`📝 One-Off Task` vs `📅 Calendar Event`).
-  - Dual confirmation lifecycles: "Done" for tasks vs "Acknowledge" for calendar reminders, with 6-second undo toast support.
+  - Manual tasks are marked "Done" on the Planned tab; calendar events are acknowledged from the "Calendar" section at the bottom of Today (6-second undo toast).
+  - Sync only imports events dated today or later and never touches past rows again; recurring events (RRULE: DAILY/WEEKLY/MONTHLY/YEARLY, INTERVAL, COUNT, UNTIL, BYDAY, EXDATE) are one item showing the next occurrence, which returns to pending when it advances.
 
 Deferred: web push notifications.
 

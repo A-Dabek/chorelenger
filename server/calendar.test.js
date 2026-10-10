@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseIcs, fetchIcsFeed } from './calendar.js';
+import { parseIcs, fetchIcsFeed, nextOccurrence, resolveUpcoming } from './calendar.js';
 
 test('parseIcs - handles empty and invalid input gracefully', () => {
   assert.deepEqual(parseIcs(''), []);
@@ -38,6 +38,8 @@ test('parseIcs - parses standard all-day event with folded description', () => {
     start_time: null,
     end_time: null,
     is_all_day: 1,
+    rrule: null,
+    exdates: '',
   });
 });
 
@@ -106,4 +108,63 @@ test('fetchIcsFeed - throws error when response is not ok', async () => {
     () => fetchIcsFeed('https://example.com/calendar.ics', { fetchFn: mockFetch }),
     /Feed URL returned 404 Not Found/
   );
+});
+
+test('parseIcs - reads RRULE and EXDATE, ignores RECURRENCE-ID overrides', () => {
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'BEGIN:VEVENT',
+    'UID:series@x',
+    'SUMMARY:Standup',
+    'DTSTART;VALUE=DATE:20200101',
+    'RRULE:FREQ=WEEKLY;BYDAY=MO',
+    'EXDATE;VALUE=DATE:20261012,20261019',
+    'END:VEVENT',
+    'BEGIN:VEVENT',
+    'UID:series@x',
+    'SUMMARY:Standup moved',
+    'RECURRENCE-ID;VALUE=DATE:20261026',
+    'DTSTART;VALUE=DATE:20261027',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+  const events = parseIcs(ics);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].title, 'Standup');
+  assert.equal(events[0].rrule, 'FREQ=WEEKLY;BYDAY=MO');
+  assert.equal(events[0].exdates, '2026-10-12,2026-10-19');
+});
+
+test('nextOccurrence - non-recurring', () => {
+  assert.equal(nextOccurrence({ start_date: '2026-10-09' }, '2026-10-10'), null);
+  assert.equal(nextOccurrence({ start_date: '2026-10-10' }, '2026-10-10'), '2026-10-10');
+});
+
+test('nextOccurrence - daily, weekly, monthly, yearly', () => {
+  assert.equal(nextOccurrence({ start_date: '2026-10-01', rrule: 'FREQ=DAILY;INTERVAL=3' }, '2026-10-10'), '2026-10-10');
+  assert.equal(nextOccurrence({ start_date: '2026-10-01', rrule: 'FREQ=DAILY;INTERVAL=3' }, '2026-10-11'), '2026-10-13');
+  // 2026-10-10 is a Saturday; next Monday is 10-12
+  assert.equal(nextOccurrence({ start_date: '2020-01-06', rrule: 'FREQ=WEEKLY;BYDAY=MO,WE' }, '2026-10-10'), '2026-10-12');
+  assert.equal(nextOccurrence({ start_date: '2020-01-06', rrule: 'FREQ=WEEKLY' }, '2026-10-10'), '2026-10-12');
+  assert.equal(nextOccurrence({ start_date: '2020-01-31', rrule: 'FREQ=MONTHLY' }, '2026-10-10'), '2026-10-31');
+  assert.equal(nextOccurrence({ start_date: '2020-03-15', rrule: 'FREQ=YEARLY' }, '2026-10-10'), '2027-03-15');
+});
+
+test('nextOccurrence - COUNT, UNTIL, EXDATE, unsupported', () => {
+  assert.equal(nextOccurrence({ start_date: '2026-10-01', rrule: 'FREQ=DAILY;COUNT=5' }, '2026-10-10'), null);
+  assert.equal(nextOccurrence({ start_date: '2026-10-08', rrule: 'FREQ=DAILY;COUNT=5' }, '2026-10-10'), '2026-10-10');
+  assert.equal(nextOccurrence({ start_date: '2026-10-01', rrule: 'FREQ=DAILY;UNTIL=20261009T000000Z' }, '2026-10-10'), null);
+  assert.equal(nextOccurrence({ start_date: '2026-10-01', rrule: 'FREQ=DAILY', exdates: '2026-10-10,2026-10-11' }, '2026-10-10'), '2026-10-12');
+  assert.equal(nextOccurrence({ start_date: '2026-10-01', rrule: 'FREQ=MONTHLY;BYSETPOS=1;BYDAY=MO' }, '2026-10-10'), null);
+});
+
+test('resolveUpcoming - drops past, advances recurring', () => {
+  const evs = [
+    { title: 'old', start_date: '2026-01-01', rrule: null, exdates: '' },
+    { title: 'today', start_date: '2026-10-10', rrule: null, exdates: '' },
+    { title: 'series', start_date: '2020-10-11', rrule: 'FREQ=YEARLY', exdates: '' },
+    { title: 'ended', start_date: '2020-10-11', rrule: 'FREQ=YEARLY;COUNT=2', exdates: '' },
+  ];
+  const r = resolveUpcoming(evs, '2026-10-10');
+  assert.deepEqual(r.map((e) => [e.title, e.start_date]), [['today', '2026-10-10'], ['series', '2026-10-11']]);
 });

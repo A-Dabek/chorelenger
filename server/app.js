@@ -10,7 +10,7 @@ import {
   calculateRewardStatus,
   evaluateAchievements,
 } from './motivation.js';
-import { parseIcs, fetchIcsFeed } from './calendar.js';
+import { parseIcs, fetchIcsFeed, resolveUpcoming } from './calendar.js';
 import {
   verifyPassword, createSession, checkSession, destroySession, createThrottle,
 } from './auth.js';
@@ -49,6 +49,7 @@ function presentPlanned(item) {
   return {
     ...item,
     is_all_day: Boolean(item.is_all_day),
+    recurring: Boolean(item.rrule),
   };
 }
 
@@ -392,28 +393,40 @@ export function buildApp({ db, passwordHash, secureCookies = false, webDir, now 
     return { feedUrl };
   });
 
-  app.post('/api/planned/import-ics', async (req, reply) => {
-    const ics = req.body && typeof req.body.ics === 'string' ? req.body.ics : '';
-    if (!ics.trim()) return reply.code(400).send({ error: 'ics text payload is required' });
-    const events = parseIcs(ics);
-    let importedCount = 0;
-    for (const ev of events) {
+  // Upserts upcoming calendar events by UID. Past one-off rows are never touched;
+  // a recurring row that advanced to a later occurrence returns to pending.
+  function upsertCalendarEvents(events, source) {
+    const todayStr = today();
+    let count = 0;
+    for (const ev of resolveUpcoming(events, todayStr)) {
       if (ev.external_uid) {
-        const existing = db.prepare('SELECT id FROM planned_items WHERE external_uid = ?').get(ev.external_uid);
+        const existing = db.prepare('SELECT id, start_date FROM planned_items WHERE external_uid = ?').get(ev.external_uid);
         if (existing) {
+          if (!ev.rrule && existing.start_date < todayStr) continue;
+          const advanced = ev.rrule && ev.start_date > existing.start_date;
           db.prepare(`UPDATE planned_items SET
             title = @title, notes = @notes, start_date = @start_date, start_time = @start_time,
-            end_time = @end_time, is_all_day = @is_all_day, location = @location, external_uid = @external_uid
-            WHERE id = @id`).run({ ...ev, id: existing.id });
-          importedCount++;
+            end_time = @end_time, is_all_day = @is_all_day, location = @location, source = @source,
+            external_uid = @external_uid, rrule = @rrule, exdates = @exdates
+            ${advanced ? ", status = 'pending', completed_at = NULL" : ''}
+            WHERE id = @id`).run({ ...ev, source, id: existing.id });
+          count++;
           continue;
         }
       }
       db.prepare(`INSERT INTO planned_items
-        (title, notes, start_date, start_time, end_time, is_all_day, location, source, external_uid, status)
-        VALUES (@title, @notes, @start_date, @start_time, @end_time, @is_all_day, @location, 'ics_import', @external_uid, 'pending')`).run(ev);
-      importedCount++;
+        (title, notes, start_date, start_time, end_time, is_all_day, location, source, external_uid, rrule, exdates, status)
+        VALUES (@title, @notes, @start_date, @start_time, @end_time, @is_all_day, @location, @source, @external_uid, @rrule, @exdates, 'pending')`).run({ ...ev, source });
+      count++;
     }
+    return count;
+  }
+
+  app.post('/api/planned/import-ics', async (req, reply) => {
+    const ics = req.body && typeof req.body.ics === 'string' ? req.body.ics : '';
+    if (!ics.trim()) return reply.code(400).send({ error: 'ics text payload is required' });
+    const events = parseIcs(ics);
+    const importedCount = upsertCalendarEvents(events, 'ics_import');
     return { ok: true, importedCount, eventsCount: events.length };
   });
 
@@ -432,24 +445,7 @@ export function buildApp({ db, passwordHash, secureCookies = false, webDir, now 
     }
 
     const events = parseIcs(icsText);
-    let syncedCount = 0;
-    for (const ev of events) {
-      if (ev.external_uid) {
-        const existing = db.prepare('SELECT id FROM planned_items WHERE external_uid = ?').get(ev.external_uid);
-        if (existing) {
-          db.prepare(`UPDATE planned_items SET
-            title = @title, notes = @notes, start_date = @start_date, start_time = @start_time,
-            end_time = @end_time, is_all_day = @is_all_day, location = @location, source = 'calendar_sync', external_uid = @external_uid
-            WHERE id = @id`).run({ ...ev, id: existing.id });
-          syncedCount++;
-          continue;
-        }
-      }
-      db.prepare(`INSERT INTO planned_items
-        (title, notes, start_date, start_time, end_time, is_all_day, location, source, external_uid, status)
-        VALUES (@title, @notes, @start_date, @start_time, @end_time, @is_all_day, @location, 'calendar_sync', @external_uid, 'pending')`).run(ev);
-      syncedCount++;
-    }
+    const syncedCount = upsertCalendarEvents(events, 'calendar_sync');
 
     return { ok: true, synced: true, count: syncedCount, eventsCount: events.length };
   });

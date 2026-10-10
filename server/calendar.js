@@ -1,3 +1,5 @@
+import { addDays, addMonths, diffDays } from './schedule.js';
+
 function unescapeIcsText(str = '') {
   return str
     .replace(/\\\\/g, '\\')
@@ -51,6 +53,7 @@ export function parseIcs(icsString = '') {
   const events = [];
   let inEvent = false;
   let currentEvent = null;
+  let isOverride = false;
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
@@ -67,12 +70,15 @@ export function parseIcs(icsString = '') {
         start_time: null,
         end_time: null,
         is_all_day: 1,
+        rrule: null,
+        exdates: '',
       };
+      isOverride = false;
       continue;
     }
 
     if (line === 'END:VEVENT') {
-      if (currentEvent && currentEvent.title && currentEvent.start_date) {
+      if (currentEvent && !isOverride && currentEvent.title && currentEvent.start_date) {
         events.push(currentEvent);
       }
       inEvent = false;
@@ -89,7 +95,14 @@ export function parseIcs(icsString = '') {
     const propHeader = line.slice(0, colonIndex).toUpperCase();
     const propVal = line.slice(colonIndex + 1);
 
-    if (propHeader === 'UID' || propHeader.startsWith('UID;')) {
+    if (propHeader === 'RRULE') {
+      currentEvent.rrule = propVal.trim() || null;
+    } else if (propHeader === 'RECURRENCE-ID' || propHeader.startsWith('RECURRENCE-ID;')) {
+      isOverride = true;
+    } else if (propHeader === 'EXDATE' || propHeader.startsWith('EXDATE;')) {
+      const dates = propVal.split(',').map((v) => parseDateTimeValue(v.trim())?.date).filter(Boolean);
+      currentEvent.exdates = [currentEvent.exdates, ...dates].filter(Boolean).join(',');
+    } else if (propHeader === 'UID' || propHeader.startsWith('UID;')) {
       currentEvent.external_uid = propVal.trim();
     } else if (propHeader === 'SUMMARY' || propHeader.startsWith('SUMMARY;')) {
       currentEvent.title = unescapeIcsText(propVal).trim() || '(No title)';
@@ -113,6 +126,81 @@ export function parseIcs(icsString = '') {
   }
 
   return events;
+}
+
+const WEEKDAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+const MAX_ITERATIONS = 100000;
+
+function parseRrule(rrule) {
+  const parts = {};
+  for (const kv of String(rrule).split(';')) {
+    const [k, v] = kv.split('=');
+    if (k && v !== undefined) parts[k.trim().toUpperCase()] = v.trim().toUpperCase();
+  }
+  const supported = ['FREQ', 'INTERVAL', 'COUNT', 'UNTIL', 'BYDAY', 'WKST'];
+  if (Object.keys(parts).some((k) => !supported.includes(k))) return null;
+  if (!['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'].includes(parts.FREQ)) return null;
+  const interval = parts.INTERVAL ? Number(parts.INTERVAL) : 1;
+  if (!Number.isInteger(interval) || interval < 1) return null;
+  let days = null;
+  if (parts.BYDAY) {
+    if (parts.FREQ !== 'WEEKLY') return null;
+    days = parts.BYDAY.split(',').map((d) => WEEKDAYS.indexOf(d));
+    if (days.some((d) => d < 0)) return null;
+  }
+  const count = parts.COUNT ? Number(parts.COUNT) : null;
+  if (count !== null && (!Number.isInteger(count) || count < 1)) return null;
+  const until = parts.UNTIL ? parseDateTimeValue(parts.UNTIL)?.date || null : null;
+  if (parts.UNTIL && !until) return null;
+  return { freq: parts.FREQ, interval, days, count, until };
+}
+
+function* candidates(start, rule) {
+  const dow = (s) => new Date(`${s}T00:00:00Z`).getUTCDay();
+  if (rule.freq === 'WEEKLY' && rule.days) {
+    const weekStart = addDays(start, -((dow(start) + 6) % 7));
+    for (let i = 0; i < MAX_ITERATIONS; i++) {
+      const d = addDays(start, i);
+      const week = Math.floor(diffDays(d, weekStart) / 7);
+      if (week % rule.interval === 0 && rule.days.includes(dow(d))) yield d;
+    }
+    return;
+  }
+  for (let k = 0; k < MAX_ITERATIONS; k++) {
+    if (rule.freq === 'DAILY') yield addDays(start, k * rule.interval);
+    else if (rule.freq === 'WEEKLY') yield addDays(start, k * rule.interval * 7);
+    else if (rule.freq === 'MONTHLY') yield addMonths(start, k * rule.interval);
+    else yield addMonths(start, k * rule.interval * 12);
+  }
+}
+
+/**
+ * event: { start_date, rrule, exdates } -> first occurrence date >= today, or null.
+ * Unsupported rules fall back to DTSTART only.
+ */
+export function nextOccurrence(event, today) {
+  const start = event.start_date;
+  const rule = event.rrule ? parseRrule(event.rrule) : null;
+  if (!rule) return start >= today ? start : null;
+  const ex = new Set(Array.isArray(event.exdates) ? event.exdates : String(event.exdates || '').split(',').filter(Boolean));
+  let n = 0;
+  for (const d of candidates(start, rule)) {
+    if (rule.until && d > rule.until) return null;
+    n++;
+    if (rule.count && n > rule.count) return null;
+    if (d >= today && !ex.has(d)) return d;
+  }
+  return null;
+}
+
+/** Keeps only events with an occurrence on/after today; start_date becomes that occurrence. */
+export function resolveUpcoming(events, today) {
+  const out = [];
+  for (const ev of events) {
+    const next = nextOccurrence(ev, today);
+    if (next) out.push({ ...ev, start_date: next });
+  }
+  return out;
 }
 
 export async function fetchIcsFeed(feedUrl, { timeoutMs = 10000, fetchFn = globalThis.fetch } = {}) {

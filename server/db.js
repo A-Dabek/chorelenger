@@ -107,6 +107,9 @@ export function openDb(file) {
   if (!db.prepare('PRAGMA table_info(chores)').all().some((c) => c.name === 'icon')) {
     db.exec("ALTER TABLE chores ADD COLUMN icon TEXT NOT NULL DEFAULT ''");
   }
+  const plannedCols = db.prepare('PRAGMA table_info(planned_items)').all().map((c) => c.name);
+  if (!plannedCols.includes('rrule')) db.exec('ALTER TABLE planned_items ADD COLUMN rrule TEXT');
+  if (!plannedCols.includes('exdates')) db.exec("ALTER TABLE planned_items ADD COLUMN exdates TEXT NOT NULL DEFAULT ''");
   migrateOneOff(db);
   return db;
 }

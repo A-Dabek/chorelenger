@@ -304,6 +304,49 @@ test('calendar settings and sync endpoints', async () => {
   assert.equal(afterReimport.length, 1);
 });
 
+test('sync skips past events and advances recurring series', async () => {
+  let clock = new Date(2026, 5, 10, 12); // 2026-06-10
+  const app = buildApp({ db: openDb(':memory:'), passwordHash: hashPassword('hunter2hunter2'), now: () => clock });
+  const { cookies } = await login(app);
+  await app.inject({ method: 'PUT', url: '/api/settings/calendar', cookies, payload: { feedUrl: 'https://example.com/c.ics' } });
+  const ev = (uid, title, start, extra = []) => [
+    'BEGIN:VEVENT', `UID:${uid}`, `SUMMARY:${title}`, `DTSTART;VALUE=DATE:${start}`, ...extra, 'END:VEVENT',
+  ];
+  const body = ['BEGIN:VCALENDAR',
+    ...ev('past@x', 'Past', '20260601'),
+    ...ev('future@x', 'Future', '20260612'),
+    ...ev('series@x', 'Series', '20200101', ['RRULE:FREQ=WEEKLY;BYDAY=MO']),
+    ...ev('ended@x', 'Ended', '20200101', ['RRULE:FREQ=DAILY;COUNT=3']),
+    'END:VCALENDAR'].join('\r\n');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, status: 200, text: async () => body });
+  const sync = async () => (await app.inject({ method: 'POST', url: '/api/planned/sync', cookies, payload: {} })).json();
+  const list = async (q = '') => (await app.inject({ url: `/api/planned${q}`, cookies })).json();
+  try {
+    assert.equal((await sync()).count, 2);
+    let items = await list();
+    assert.deepEqual(items.map((i) => [i.title, i.start_date, i.recurring]), [['Future', '2026-06-12', false], ['Series', '2026-06-15', true]]);
+
+    const series = items.find((i) => i.title === 'Series');
+    await app.inject({ method: 'POST', url: `/api/planned/${series.id}/confirm`, cookies });
+    // same day re-sync: nothing advances, stays acknowledged
+    await sync();
+    assert.equal((await list('?status=completed')).length, 1);
+
+    // later: Future is past and untouched, series advances and returns to pending
+    clock = new Date(2026, 5, 16, 12);
+    assert.equal((await sync()).count, 1);
+    items = await list();
+    assert.equal(items.length, 2);
+    const s2 = items.find((i) => i.title === 'Series');
+    assert.equal(s2.start_date, '2026-06-22');
+    assert.equal(s2.status, 'pending');
+    assert.equal(items.find((i) => i.title === 'Future').start_date, '2026-06-12');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test('category: predefined list, default misc, invalid rejected', async () => {
   const app = setup();
   const { cookies } = await login(app);

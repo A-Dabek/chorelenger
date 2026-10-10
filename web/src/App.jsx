@@ -12,16 +12,19 @@ export function App() {
   const [authed, setAuthed] = useState(null);
   const [tab, setTab] = useTabRoute();
   const [chores, setChores] = useState([]);
+  const [planned, setPlanned] = useState([]);
   const [challengeData, setChallengeData] = useState(null);
   const [toast, setToast] = useState(null);
 
   const reload = useCallback(async () => {
     try {
-      const [choresList, chal] = await Promise.all([
+      const [choresList, chal, plannedList] = await Promise.all([
         api('GET', '/api/chores'),
         api('GET', '/api/challenge/current'),
+        api('GET', '/api/planned'),
       ]);
       setChores(choresList);
+      setPlanned(plannedList);
       setChallengeData(chal);
       setAuthed(true);
     } catch (e) {
@@ -29,7 +32,7 @@ export function App() {
     }
   }, []);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { reload(); }, [reload, tab]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 6000); return () => clearTimeout(t); }, [toast]);
 
   const markDone = async (c) => {
@@ -79,7 +82,7 @@ export function App() {
   return (
     <>
       <main>
-        {tab === 'today' && <Today chores={chores} challengeData={challengeData} onDone={markDone} onExtra={logExtra} />}
+        {tab === 'today' && <Today chores={chores} planned={planned} onAcknowledge={confirmPlanned} challengeData={challengeData} onDone={markDone} onExtra={logExtra} />}
         {tab === 'planned' && <PlannedView onConfirm={confirmPlanned} toast={toast} />}
         {tab === 'chores' && <Chores chores={chores} reload={reload} />}
         {tab === 'motivation' && <MotivationView />}
