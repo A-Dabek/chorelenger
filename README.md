@@ -6,7 +6,7 @@ Personal chore tracker PWA. Fastify + `node:sqlite` backend, Preact + Vite front
 
 Implemented:
 - Single-user password auth (scrypt, session cookie, login throttle).
-- Chores with three recurrence models (interval / flexible window / yearly calendar date), Today dashboard (overdue / due / upcoming), one-tap done with undo, monthly history, installable PWA shell.
+- Chores with three recurrence models (interval / flexible window / yearly calendar date), Today dashboard (overdue / due / upcoming), compact icon-grid Today screen (tap tile, confirm in sheet, undo; "Labels" toggle shows names; chore `icon` is an emoji or `img:file.svg` from `web/public/icons/`), monthly history, installable PWA shell.
 - Monthly themed challenges with spotlighted chores, quick-tap extra counter buttons, objective monthly reward measurement (≥95% base execution + extra goal target), and milestone achievements.
 - **Planned Items & Calendar Integration**:
   - One-off task tracking with date, time, location, notes, and 1-tap "Add to Google Calendar" web intent links.

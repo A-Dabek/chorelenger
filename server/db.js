@@ -66,5 +66,8 @@ export function openDb(file) {
     CREATE INDEX IF NOT EXISTS idx_planned_status ON planned_items(status);
     CREATE INDEX IF NOT EXISTS idx_planned_uid ON planned_items(external_uid);
   `);
+  if (!db.prepare('PRAGMA table_info(chores)').all().some((c) => c.name === 'icon')) {
+    db.exec("ALTER TABLE chores ADD COLUMN icon TEXT NOT NULL DEFAULT ''");
+  }
   return db;
 }

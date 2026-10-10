@@ -89,13 +89,15 @@ export function App() {
       {toast && <div class="toast"><span>{toast.text}</span><button onClick={undo}>Undo</button></div>}
       <nav>
         {[
-          ['today', 'Today'],
-          ['planned', 'Planned'],
-          ['chores', 'Chores'],
-          ['motivation', 'Motivation'],
-          ['history', 'History'],
-        ].map(([k, l]) => (
-          <button key={k} class={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{l}</button>
+          ['today', 'Today', '🏠'],
+          ['planned', 'Planned', '📅'],
+          ['chores', 'Chores', '🧹'],
+          ['motivation', 'Motivation', '🏆'],
+          ['history', 'History', '📜'],
+        ].map(([k, l, i]) => (
+          <button key={k} class={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
+            <span class="nav-ico" aria-hidden="true">{i}</span><span class="nav-label">{l}</span>
+          </button>
         ))}
       </nav>
     </>

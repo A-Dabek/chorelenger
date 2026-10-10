@@ -303,3 +303,17 @@ test('calendar settings and sync endpoints', async () => {
   const afterReimport = (await app.inject({ url: '/api/planned', cookies })).json();
   assert.equal(afterReimport.length, 1);
 });
+
+test('chore icon: saved, trimmed, limited, defaults to empty', async () => {
+  const app = setup();
+  const { cookies } = await login(app);
+  const base = { name: 'Walk dog', type: 'interval', interval_n: 1, interval_unit: 'day', start_date: '2026-06-01' };
+  const a = (await app.inject({ method: 'POST', url: '/api/chores', cookies, payload: { ...base, icon: '  🐕  ' } })).json();
+  assert.equal(a.icon, '🐕');
+  const b = (await app.inject({ method: 'POST', url: '/api/chores', cookies, payload: base })).json();
+  assert.equal(b.icon, '');
+  const c = (await app.inject({ method: 'PUT', url: `/api/chores/${b.id}`, cookies, payload: { ...base, icon: 'x'.repeat(100) } })).json();
+  assert.equal(c.icon.length, 32);
+  const list = (await app.inject({ url: '/api/chores', cookies })).json();
+  assert.ok(list.every((x) => typeof x.icon === 'string'));
+});

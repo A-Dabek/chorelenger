@@ -39,25 +39,27 @@ test.describe('Chore Lifecycle & Execution', () => {
 
     // 4. Go to Today tab and complete chore
     await page.click('nav button:has-text("Today")');
-    await expect(page.locator('section:has-text("Due") .card .name')).toHaveText('Water indoor plants');
+    await expect(page.locator('section[data-status="due"] .tile')).toHaveAttribute('aria-label', 'Water indoor plants');
 
     // Click "Done"
-    await page.click('section:has-text("Due") .card button:has-text("Done")');
+    await page.click('section[data-status="due"] .tile');
+    await page.click('.sheet-done');
 
     // Toast should show and chore moves to Done today
     await expect(page.locator('.toast')).toContainText('Water indoor plants done ✓');
-    await expect(page.locator('section:has-text("Done today") .card .name')).toHaveText('Water indoor plants');
+    await expect(page.locator('section[data-status="done"] .tile')).toHaveAttribute('aria-label', 'Water indoor plants');
 
     // 5. Click "Undo" on toast
     await page.click('.toast button:has-text("Undo")');
-    await expect(page.locator('section:has-text("Due") .card .name')).toHaveText('Water indoor plants');
+    await expect(page.locator('section[data-status="due"] .tile')).toHaveAttribute('aria-label', 'Water indoor plants');
 
     // 6. Complete chore again and verify persistence across reload
-    await page.click('section:has-text("Due") .card button:has-text("Done")');
-    await expect(page.locator('section:has-text("Done today") .card .name')).toHaveText('Water indoor plants');
+    await page.click('section[data-status="due"] .tile');
+    await page.click('.sheet-done');
+    await expect(page.locator('section[data-status="done"] .tile')).toHaveAttribute('aria-label', 'Water indoor plants');
 
     await page.reload();
-    await expect(page.locator('section:has-text("Done today") .card .name')).toHaveText('Water indoor plants');
+    await expect(page.locator('section[data-status="done"] .tile')).toHaveAttribute('aria-label', 'Water indoor plants');
 
     // 7. Delete chore
     await page.click('nav button:has-text("Chores")');

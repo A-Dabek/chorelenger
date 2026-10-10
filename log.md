@@ -103,3 +103,9 @@ Append-only record of everything that happens in this project. See `AGENTS.md` f
 - Changed: committed `web/src/` (App, views, components, lib, router) and `log.md`.
 - Verification: build, `npm test` (24/24) and Playwright (12/12) passed before the commit.
 - Open issues: none.
+
+## 2026-10-10 20:55 — Compact icon-only Today screen
+- Requested: overhaul the main Today screen for mobile: icon-only tiles, verbose labels toggle, misclick protection.
+- Changed: `chores.icon` column (guarded migration in `server/db.js`, trimmed/32-char limit in `server/app.js`, API test); `ChoreIcon`/`choreIcon` in `web/src/lib/chores.jsx` (emoji, `img:<file>` served from `/icons/<file>` i.e. `web/public/icons/`, fallback to category emoji then first letter); icon input + suggestions in Chores form; new `ChoreTile.jsx`, `DoneSheet.jsx`; `Today.jsx` rewritten as status-grouped grid (upcoming = next 7 days) with sticky verbose toggle (localStorage `chorelenger.verbose`); tap tile -> bottom sheet -> Done (Undo toast kept); done-today tiles disabled; one-line `ChallengeBanner`; slim icon nav; CSS in `style.css`.
+- Verification: `npm test` 25 pass, `npm run build` ok, Playwright 14 pass (existing specs updated to tap tile + confirm; new `e2e/today-grid.spec.js` covers cancel/confirm, verbose persistence, 24 chores fit 390x844).
+- Follow-ups: add image assets under `web/public/icons/` and set a chore icon to `img:name.svg`; the service worker cache may need a bump for new assets.

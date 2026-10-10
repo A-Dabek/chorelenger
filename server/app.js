@@ -56,10 +56,11 @@ function validateChore(body, today) {
   const name = typeof b.name === 'string' ? b.name.trim() : '';
   if (!name || name.length > 120) return { error: 'name is required (max 120 chars)' };
   const category = typeof b.category === 'string' ? b.category.trim().slice(0, 60) : '';
+  const icon = typeof b.icon === 'string' ? b.icon.trim().slice(0, 32) : '';
   const type = b.type;
   const start_date = /^\d{4}-\d{2}-\d{2}$/.test(b.start_date || '') ? b.start_date : today;
   const out = {
-    name, category, type, start_date,
+    name, category, icon, type, start_date,
     interval_n: null, interval_unit: null, cal_month: null, cal_day: null, window_days: 0,
   };
   if (type === 'interval' || type === 'flexible') {
@@ -162,8 +163,8 @@ export function buildApp({ db, passwordHash, secureCookies = false, webDir, now 
     const { value, error } = validateChore(req.body, today());
     if (error) return reply.code(400).send({ error });
     const r = db.prepare(`INSERT INTO chores
-      (name, category, type, interval_n, interval_unit, cal_month, cal_day, window_days, start_date)
-      VALUES (@name, @category, @type, @interval_n, @interval_unit, @cal_month, @cal_day, @window_days, @start_date)`).run(value);
+      (name, category, icon, type, interval_n, interval_unit, cal_month, cal_day, window_days, start_date)
+      VALUES (@name, @category, @icon, @type, @interval_n, @interval_unit, @cal_month, @cal_day, @window_days, @start_date)`).run(value);
     reply.code(201);
     return present(db.prepare('SELECT * FROM chores WHERE id = ?').get(r.lastInsertRowid));
   });
@@ -175,7 +176,7 @@ export function buildApp({ db, passwordHash, secureCookies = false, webDir, now 
     if (!getChore(id)) return reply.code(404).send({ error: 'not found' });
     const { value, error } = validateChore(req.body, today());
     if (error) return reply.code(400).send({ error });
-    db.prepare(`UPDATE chores SET name=@name, category=@category, type=@type, interval_n=@interval_n,
+    db.prepare(`UPDATE chores SET name=@name, category=@category, icon=@icon, type=@type, interval_n=@interval_n,
       interval_unit=@interval_unit, cal_month=@cal_month, cal_day=@cal_day, window_days=@window_days,
       start_date=@start_date WHERE id=@id`).run({ ...value, id });
     return present(getChore(id));

@@ -11,7 +11,7 @@ test.describe('Monthly Challenge, Extra Buttons & Motivation', () => {
     // 1. Verify Monthly Challenge Banner on Today tab
     const banner = page.locator('.challenge-banner');
     await expect(banner).toBeVisible();
-    await expect(banner.locator('.challenge-tag')).toHaveText('Monthly Challenge');
+    await expect(banner.locator('.challenge-tag')).toHaveAttribute('title', 'Monthly Challenge');
     await expect(banner.locator('.challenge-title')).toBeVisible();
 
     // 2. Interact with Extra Action Buttons
@@ -48,12 +48,13 @@ test.describe('Monthly Challenge, Extra Buttons & Motivation', () => {
 
     // Go to Today tab and verify Spotlight badge
     await page.click('nav button:has-text("Today")');
-    const spotlightCard = page.locator('.card.spotlight');
-    await expect(spotlightCard).toBeVisible();
-    await expect(spotlightCard.locator('.spotlight-badge')).toHaveText('✨ Spotlight');
+    const spotlightTile = page.locator('.tile.spotlight');
+    await expect(spotlightTile).toBeVisible();
+    await expect(spotlightTile.locator('.tile-badge.spot')).toHaveText('✨');
 
-    // Mark chore as Done
-    await spotlightCard.locator('button:has-text("Done")').click();
+    // Mark chore as Done (tap tile, then confirm in sheet)
+    await spotlightTile.click();
+    await page.click('.sheet-done');
     await expect(page.locator('.toast')).toBeVisible();
 
     // 4. Navigate to Motivation Tab
