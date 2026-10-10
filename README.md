@@ -53,3 +53,15 @@ runit (`pkg install termux-services`) or your existing supervisor. Back up `data
 | `COOKIE_SECURE` | `1` to mark the session cookie Secure (use behind HTTPS) |
 | `PORT`, `HOST` | listen address (default `127.0.0.1:3000`) |
 | `TZ` | timezone used to decide what "today" is |
+
+### Chores: categories and one-offs
+
+Categories are fixed: 🧹 `cleaning`, 🏠 `household`, 💪 `health`, 📌 `misc` (default). Older chores with other
+free-text categories keep showing as plain text until re-saved with a valid category.
+A *one-off* chore has no recurrence and no due date: it stays "due" in Today until done, then is finished
+permanently (visible greyed in the Chores list and in history; Undo reopens it).
+
+### Resetting the dev database
+
+`npm run db:reset` deletes the DB file (`CHORELENGER_DB` or `data/chorelenger.db`, plus `-wal`/`-shm`).
+It refuses to run when `NODE_ENV=production`. Stop the server first.

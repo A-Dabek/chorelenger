@@ -1,4 +1,4 @@
-import { ChoreIcon, when } from '../lib/chores.jsx';
+import { ChoreIcon, CATEGORIES, when } from '../lib/chores.jsx';
 
 export function ChoreTile({ c, verbose, isSpotlighted, onSelect }) {
   const inert = c.doneToday;
@@ -14,6 +14,7 @@ export function ChoreTile({ c, verbose, isSpotlighted, onSelect }) {
       <ChoreIcon c={c} />
       {verbose && <span class="tile-name">{c.name}</span>}
       {verbose && <span class="tile-when">{inert ? 'done today' : when(c)}</span>}
+      {CATEGORIES[c.category] && <span class="tile-cat">{CATEGORIES[c.category].emoji}</span>}
       {inert && <span class="tile-badge">✓</span>}
       {isSpotlighted && !inert && <span class="tile-badge spot">✨</span>}
     </button>

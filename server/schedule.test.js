@@ -46,3 +46,12 @@ test('calendar: start date in future', () => {
   const c = { type: 'calendar', cal_month: 2, cal_day: 29, start_date: '2026-03-01' };
   assert.equal(schedule(c, null, '2026-03-01').dueDate, '2027-02-28');
 });
+
+test('one_off: open is due with no dates, done is finished', () => {
+  const c = { type: 'one_off', start_date: '2026-03-01' };
+  const open = schedule(c, null, '2026-09-01');
+  assert.equal(open.status, 'due');
+  assert.equal(open.dueDate, null);
+  assert.equal(open.daysUntil, 0);
+  assert.equal(schedule(c, '2026-09-01', '2026-09-02').status, 'finished');
+});

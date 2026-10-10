@@ -16,7 +16,8 @@ I always know what needs doing and when — and actually doing it feels worthwhi
 
 ### Active
 
-- [ ] Chores have names, categories, and can be created/edited/deleted
+- [ ] Chores have names, one of four predefined categories (cleaning, household, health, misc), and can be created/edited/deleted
+- [ ] One-off chores (no recurrence, no due date) finish permanently when done; undo reopens them
 - [ ] A chore can recur by fixed interval (every N days/weeks/months), by calendar date (annual/specific date), or as a flexible window ("every ~2 months, whenever")
 - [ ] A dashboard shows what's due today / overdue / upcoming
 - [ ] Marking a regular chore done is a single tap (no effort rating, no required note)

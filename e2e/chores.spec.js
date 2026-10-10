@@ -18,7 +18,7 @@ test.describe('Chore Lifecycle & Execution', () => {
 
     await expect(page.locator('h1')).toHaveText('New chore');
     await page.fill('label:has-text("Name") input', 'Water house plants');
-    await page.fill('label:has-text("Category") input', 'plants');
+    await page.selectOption('label:has-text("Category") select', 'misc');
     await page.selectOption('label:has-text("Repeats") select', 'interval');
     await page.fill('label:has-text("Every") input', '2');
     await page.selectOption('label:has-text("Unit") select', 'day');
@@ -76,7 +76,7 @@ test.describe('Chore Lifecycle & Execution', () => {
     // 1. Create flexible window chore
     await page.click('button:has-text("+ Add")');
     await page.fill('label:has-text("Name") input', 'Vacuum carpets');
-    await page.fill('label:has-text("Category") input', 'home');
+    await page.selectOption('label:has-text("Category") select', 'misc');
     await page.selectOption('label:has-text("Repeats") select', 'flexible');
     await page.fill('label:has-text("Every") input', '1');
     await page.selectOption('label:has-text("Unit") select', 'week');
@@ -86,7 +86,7 @@ test.describe('Chore Lifecycle & Execution', () => {
     // 2. Create calendar yearly chore
     await page.click('button:has-text("+ Add")');
     await page.fill('label:has-text("Name") input', 'Annual HVAC Filter');
-    await page.fill('label:has-text("Category") input', 'maintenance');
+    await page.selectOption('label:has-text("Category") select', 'misc');
     await page.selectOption('label:has-text("Repeats") select', 'calendar');
     await page.selectOption('label:has-text("Month") select', '10');
     await page.fill('label:has-text("Day") input', '15');

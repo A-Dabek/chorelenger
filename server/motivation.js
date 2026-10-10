@@ -27,6 +27,10 @@ export function calculateExpectedChoreOccurrences(chore, monthStr) {
 
   if (chore.start_date > monthEnd) return 0;
 
+  if (chore.type === 'one_off') {
+    return chore.start_date >= monthStart ? 1 : 0;
+  }
+
   if (chore.type === 'calendar') {
     if (chore.cal_month !== monthNum) return 0;
     const targetDay = Math.min(chore.cal_day || 1, numDays);

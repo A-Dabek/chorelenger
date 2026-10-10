@@ -35,12 +35,20 @@ export function addInterval(s, n, unit) {
 }
 
 /**
- * chore: { type: 'interval'|'flexible'|'calendar', interval_n, interval_unit,
+ * chore: { type: 'interval'|'flexible'|'calendar'|'one_off', interval_n, interval_unit,
  *          cal_month, cal_day, window_days, start_date }
  * lastDone: 'YYYY-MM-DD' | null
- * Returns { dueDate, windowStart, overdueAfter, status: 'overdue'|'due'|'upcoming', daysUntil }
+ * Returns { dueDate, windowStart, overdueAfter, status: 'overdue'|'due'|'upcoming'|'finished', daysUntil }
+ * (one_off: dates are null; finished once it has any completion)
  */
 export function schedule(chore, lastDone, today) {
+  if (chore.type === 'one_off') {
+    // No recurrence, no due date: open ('due') until it has been done once, then finished for good.
+    return {
+      dueDate: null, windowStart: null, overdueAfter: null, daysUntil: 0,
+      status: lastDone ? 'finished' : 'due',
+    };
+  }
   let dueDate;
   let windowStart;
   let overdueAfter;

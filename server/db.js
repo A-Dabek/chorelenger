@@ -2,6 +2,44 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+// SQLite cannot alter a CHECK constraint: rebuild chores when the old one lacks 'one_off'.
+function migrateOneOff(db) {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'chores'").get();
+  if (!row || row.sql.includes('one_off')) return;
+  db.exec('PRAGMA foreign_keys = OFF');
+  try {
+    db.exec(`
+      BEGIN;
+      CREATE TABLE chores_new (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT '',
+        type TEXT NOT NULL CHECK (type IN ('interval','flexible','calendar','one_off')),
+        interval_n INTEGER,
+        interval_unit TEXT CHECK (interval_unit IN ('day','week','month')),
+        cal_month INTEGER,
+        cal_day INTEGER,
+        window_days INTEGER NOT NULL DEFAULT 0,
+        start_date TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        icon TEXT NOT NULL DEFAULT ''
+      );
+      INSERT INTO chores_new (id, name, category, type, interval_n, interval_unit, cal_month, cal_day,
+        window_days, start_date, created_at, icon)
+        SELECT id, name, category, type, interval_n, interval_unit, cal_month, cal_day,
+        window_days, start_date, created_at, icon FROM chores;
+      DROP TABLE chores;
+      ALTER TABLE chores_new RENAME TO chores;
+      COMMIT;
+    `);
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch { /* no open transaction */ }
+    throw e;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
 export function openDb(file) {
   if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
@@ -12,7 +50,7 @@ export function openDb(file) {
       id INTEGER PRIMARY KEY,
       name TEXT NOT NULL,
       category TEXT NOT NULL DEFAULT '',
-      type TEXT NOT NULL CHECK (type IN ('interval','flexible','calendar')),
+      type TEXT NOT NULL CHECK (type IN ('interval','flexible','calendar','one_off')),
       interval_n INTEGER,
       interval_unit TEXT CHECK (interval_unit IN ('day','week','month')),
       cal_month INTEGER,
@@ -69,5 +107,6 @@ export function openDb(file) {
   if (!db.prepare('PRAGMA table_info(chores)').all().some((c) => c.name === 'icon')) {
     db.exec("ALTER TABLE chores ADD COLUMN icon TEXT NOT NULL DEFAULT ''");
   }
+  migrateOneOff(db);
   return db;
 }

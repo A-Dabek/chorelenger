@@ -2,19 +2,19 @@ import { useState } from 'preact/hooks';
 import { api } from '../api.js';
 import { MONTHS } from '../lib/dates.js';
 import { ChoreCard } from '../components/ChoreCard.jsx';
-import { ICON_SUGGESTIONS } from '../lib/chores.jsx';
+import { ICON_SUGGESTIONS, CATEGORIES } from '../lib/chores.jsx';
 
-const blank = { name: '', category: '', icon: '', type: 'interval', interval_n: 1, interval_unit: 'week', window_days: 7, cal_month: 1, cal_day: 1 };
+const blank = { name: '', category: 'misc', icon: '', type: 'interval', interval_n: 1, interval_unit: 'week', window_days: 7, cal_month: 1, cal_day: 1 };
 
 function ChoreForm({ chore, onSave, onCancel, onDelete }) {
-  const [f, setF] = useState({ ...blank, ...chore });
+  const [f, setF] = useState({ ...blank, ...chore, category: chore?.category in CATEGORIES ? chore.category : 'misc' });
   const [err, setErr] = useState('');
   const set = (k, num) => (e) => setF({ ...f, [k]: num ? Number(e.target.value) : e.target.value });
   const submit = async (e) => {
     e.preventDefault();
     try {
       const body = { name: f.name, category: f.category, icon: f.icon, type: f.type, start_date: f.start_date };
-      if (f.type !== 'calendar') Object.assign(body, { interval_n: f.interval_n, interval_unit: f.interval_unit });
+      if (f.type === 'interval' || f.type === 'flexible') Object.assign(body, { interval_n: f.interval_n, interval_unit: f.interval_unit });
       if (f.type === 'flexible') body.window_days = f.window_days;
       if (f.type === 'calendar') Object.assign(body, { cal_month: f.cal_month, cal_day: f.cal_day });
       await (chore?.id ? api('PUT', `/api/chores/${chore.id}`, body) : api('POST', '/api/chores', body));
@@ -25,7 +25,11 @@ function ChoreForm({ chore, onSave, onCancel, onDelete }) {
     <form onSubmit={submit}>
       <h1>{chore?.id ? 'Edit chore' : 'New chore'}</h1>
       <label>Name<input value={f.name} onInput={set('name')} required maxLength={120} /></label>
-      <label>Category<input value={f.category} onInput={set('category')} placeholder="home, health, dog…" /></label>
+      <label>Category
+        <select value={f.category} onChange={set('category')}>
+          {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v.emoji} {v.label}</option>)}
+        </select>
+      </label>
       <label>Icon (emoji or img:file.svg; blank = automatic)<input value={f.icon || ''} onInput={set('icon')} maxLength={32} /></label>
       <div class="icon-suggest">
         {ICON_SUGGESTIONS.map((e) => <button type="button" class="ghost" key={e} onClick={() => setF({ ...f, icon: e })}>{e}</button>)}
@@ -35,9 +39,10 @@ function ChoreForm({ chore, onSave, onCancel, onDelete }) {
           <option value="interval">Fixed interval (from last done)</option>
           <option value="flexible">Flexible window (~every, whenever)</option>
           <option value="calendar">Calendar date (yearly)</option>
+          <option value="one_off">One-off (no due date, done once)</option>
         </select>
       </label>
-      {f.type !== 'calendar' && (
+      {(f.type === 'interval' || f.type === 'flexible') && (
         <div class="row">
           <label>Every<input type="number" min="1" value={f.interval_n} onInput={set('interval_n', true)} /></label>
           <label>Unit
@@ -54,7 +59,7 @@ function ChoreForm({ chore, onSave, onCancel, onDelete }) {
           <label>Day<input type="number" min="1" max="31" value={f.cal_day} onInput={set('cal_day', true)} /></label>
         </div>
       )}
-      <label>First due / start date<input type="date" value={f.start_date || ''} onInput={set('start_date')} /></label>
+      {f.type !== 'one_off' && <label>First due / start date<input type="date" value={f.start_date || ''} onInput={set('start_date')} /></label>}
       {err && <div class="error">{err}</div>}
       <div class="row"><button>Save</button><button type="button" class="ghost" onClick={onCancel}>Cancel</button></div>
       {chore?.id && <button type="button" class="danger" onClick={() => confirm(`Delete "${chore.name}" and its history?`) && onDelete(chore)}>Delete</button>}

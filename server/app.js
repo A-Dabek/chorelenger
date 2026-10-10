@@ -17,6 +17,7 @@ import {
 
 const COOKIE = 'cl_session';
 const UNITS = ['day', 'week', 'month'];
+export const CATEGORIES = ['cleaning', 'household', 'health', 'misc'];
 
 function validatePlannedItem(body, today) {
   const b = body || {};
@@ -55,7 +56,8 @@ function validateChore(body, today) {
   const b = body || {};
   const name = typeof b.name === 'string' ? b.name.trim() : '';
   if (!name || name.length > 120) return { error: 'name is required (max 120 chars)' };
-  const category = typeof b.category === 'string' ? b.category.trim().slice(0, 60) : '';
+  const category = b.category === undefined || b.category === null || b.category === '' ? 'misc' : b.category;
+  if (!CATEGORIES.includes(category)) return { error: `category must be one of: ${CATEGORIES.join(', ')}` };
   const icon = typeof b.icon === 'string' ? b.icon.trim().slice(0, 32) : '';
   const type = b.type;
   const start_date = /^\d{4}-\d{2}-\d{2}$/.test(b.start_date || '') ? b.start_date : today;
@@ -80,8 +82,8 @@ function validateChore(body, today) {
     if (!Number.isInteger(b.cal_day) || b.cal_day < 1 || b.cal_day > 31) return { error: 'cal_day must be 1-31' };
     out.cal_month = b.cal_month;
     out.cal_day = b.cal_day;
-  } else {
-    return { error: 'type must be interval, flexible or calendar' };
+  } else if (type !== 'one_off') {
+    return { error: 'type must be interval, flexible, calendar or one_off' };
   }
   return { value: out };
 }
@@ -148,15 +150,16 @@ export function buildApp({ db, passwordHash, secureCookies = false, webDir, now 
       doneToday: lastDone === t,
       totalDone: countStmt.get(chore.id).n,
       ...schedule(chore, lastDone, t),
+      finished: chore.type === 'one_off' && Boolean(lastDone),
     };
   }
 
   app.get('/api/chores', async () => {
     const t = today();
-    const rank = { overdue: 0, due: 1, upcoming: 2 };
+    const rank = { overdue: 0, due: 1, upcoming: 2, finished: 3 };
     return db.prepare('SELECT * FROM chores ORDER BY name').all()
       .map((c) => present(c, t))
-      .sort((a, b) => rank[a.status] - rank[b.status] || a.dueDate.localeCompare(b.dueDate));
+      .sort((a, b) => rank[a.status] - rank[b.status] || (a.dueDate || '').localeCompare(b.dueDate || ''));
   });
 
   app.post('/api/chores', async (req, reply) => {

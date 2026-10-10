@@ -13,7 +13,8 @@
     "start": "node --experimental-sqlite server/index.js",
     "test": "node --test server/",
     "test:e2e": "playwright test",
-    "hash-password": "node server/hash-password.js"
+    "hash-password": "node server/hash-password.js",
+    "db:reset": "node server/reset-db.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

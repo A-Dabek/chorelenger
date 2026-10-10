@@ -74,14 +74,14 @@ test('challenge endpoints: current challenge, spotlighting, extra button tap and
     method: 'POST',
     url: '/api/chores',
     cookies,
-    payload: { name: 'Bike maintenance', category: 'bike', type: 'interval', interval_n: 1, interval_unit: 'week', start_date: '2026-06-01' }
+    payload: { name: 'Bike maintenance', category: 'misc', type: 'interval', interval_n: 1, interval_unit: 'week', start_date: '2026-06-01' }
   })).json();
 
   const c2 = (await app.inject({
     method: 'POST',
     url: '/api/chores',
     cookies,
-    payload: { name: 'Dust bookshelf', category: 'home', type: 'interval', interval_n: 1, interval_unit: 'month', start_date: '2026-06-01' }
+    payload: { name: 'Dust bookshelf', category: 'household', type: 'interval', interval_n: 1, interval_unit: 'month', start_date: '2026-06-01' }
   })).json();
 
   const curr = (await app.inject({ url: '/api/challenge/current', cookies })).json();
@@ -304,6 +304,23 @@ test('calendar settings and sync endpoints', async () => {
   assert.equal(afterReimport.length, 1);
 });
 
+test('category: predefined list, default misc, invalid rejected', async () => {
+  const app = setup();
+  const { cookies } = await login(app);
+  const base = { name: 'Cat test', type: 'interval', interval_n: 1, interval_unit: 'day', start_date: '2026-06-01' };
+  for (const category of ['cleaning', 'household', 'health', 'misc']) {
+    const r = await app.inject({ method: 'POST', url: '/api/chores', cookies, payload: { ...base, category } });
+    assert.equal(r.statusCode, 201);
+    assert.equal(r.json().category, category);
+  }
+  const d = await app.inject({ method: 'POST', url: '/api/chores', cookies, payload: base });
+  assert.equal(d.json().category, 'misc');
+  const bad = await app.inject({ method: 'POST', url: '/api/chores', cookies, payload: { ...base, category: 'dog' } });
+  assert.equal(bad.statusCode, 400);
+  const put = await app.inject({ method: 'PUT', url: `/api/chores/${d.json().id}`, cookies, payload: { ...base, category: 'bogus' } });
+  assert.equal(put.statusCode, 400);
+});
+
 test('chore icon: saved, trimmed, limited, defaults to empty', async () => {
   const app = setup();
   const { cookies } = await login(app);
@@ -316,4 +333,53 @@ test('chore icon: saved, trimmed, limited, defaults to empty', async () => {
   assert.equal(c.icon.length, 32);
   const list = (await app.inject({ url: '/api/chores', cookies })).json();
   assert.ok(list.every((x) => typeof x.icon === 'string'));
+});
+
+test('one-off chore: create, due, done finishes, undo reopens, history keeps it', async () => {
+  const app = setup();
+  const { cookies } = await login(app);
+  const c = (await app.inject({ method: 'POST', url: '/api/chores', cookies, payload: { name: 'Fix lamp', type: 'one_off', category: 'household' } })).json();
+  assert.equal(c.type, 'one_off');
+  assert.equal(c.status, 'due');
+  assert.equal(c.dueDate, null);
+  assert.equal(c.finished, false);
+  const done = (await app.inject({ method: 'POST', url: `/api/chores/${c.id}/done`, cookies })).json();
+  assert.equal(done.chore.status, 'finished');
+  assert.equal(done.chore.finished, true);
+  const list = (await app.inject({ url: '/api/chores', cookies })).json();
+  assert.equal(list.find((x) => x.id === c.id).status, 'finished');
+  const month = '2026-06';
+  const hist = (await app.inject({ url: `/api/history?month=${month}`, cookies })).json();
+  assert.ok(hist.completions.some((x) => x.choreId === c.id));
+  const undone = (await app.inject({ method: 'DELETE', url: `/api/completions/${done.completionId}`, cookies })).json();
+  assert.equal(undone.status, 'due');
+  assert.equal(undone.finished, false);
+});
+
+test('migration: old chores table gains one_off and keeps rows and completions', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const file = join(mkdtempSync(join(tmpdir(), 'cl-mig-')), 'old.db');
+  const old = new DatabaseSync(file);
+  old.exec(`
+    CREATE TABLE chores (id INTEGER PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL DEFAULT '',
+      type TEXT NOT NULL CHECK (type IN ('interval','flexible','calendar')), interval_n INTEGER,
+      interval_unit TEXT CHECK (interval_unit IN ('day','week','month')), cal_month INTEGER, cal_day INTEGER,
+      window_days INTEGER NOT NULL DEFAULT 0, start_date TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE completions (id INTEGER PRIMARY KEY, chore_id INTEGER NOT NULL REFERENCES chores(id) ON DELETE CASCADE,
+      done_date TEXT NOT NULL, done_at TEXT NOT NULL DEFAULT (datetime('now')));
+    INSERT INTO chores (id, name, category, type, interval_n, interval_unit, start_date) VALUES (7, 'Old', 'dog', 'interval', 1, 'week', '2026-01-01');
+    INSERT INTO completions (chore_id, done_date) VALUES (7, '2026-01-02');
+  `);
+  old.close();
+  const db = openDb(file);
+  const chore = db.prepare('SELECT * FROM chores WHERE id = 7').get();
+  assert.equal(chore.category, 'dog');
+  assert.equal(chore.icon, '');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM completions WHERE chore_id = 7').get().n, 1);
+  db.prepare("INSERT INTO chores (name, type, start_date) VALUES ('x', 'one_off', '2026-01-01')").run();
+  db.close();
+  openDb(file).close();
 });

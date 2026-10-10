@@ -17,7 +17,7 @@ test.describe('History Log', () => {
     await page.click('nav button:has-text("Chores")');
     await page.click('button:has-text("+ Add")');
     await page.fill('label:has-text("Name") input', 'Sweep balcony');
-    await page.fill('label:has-text("Category") input', 'home');
+    await page.selectOption('label:has-text("Category") select', 'misc');
     await page.click('button:has-text("Save")');
 
     await page.click('nav button:has-text("Today")');

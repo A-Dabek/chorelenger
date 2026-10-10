@@ -43,7 +43,7 @@ test.describe('Monthly Challenge, Extra Buttons & Motivation', () => {
     await page.click('nav button:has-text("Chores")');
     await page.click('button:has-text("+ Add")');
     await page.fill('label:has-text("Name") input', 'Walk the dog');
-    await page.fill('label:has-text("Category") input', 'dog');
+    await page.selectOption('label:has-text("Category") select', 'misc');
     await page.click('button:has-text("Save")');
 
     // Go to Today tab and verify Spotlight badge
