@@ -37,7 +37,8 @@ test('chore lifecycle: create, due, done, undo, delete', async () => {
     payload: { name: 'Vacuum', type: 'interval', interval_n: 1, interval_unit: 'week', start_date: '2026-06-01' } });
   assert.equal(create.statusCode, 201);
   const chore = create.json();
-  assert.equal(chore.status, 'overdue');
+  assert.equal(chore.status, 'due'); // new chores are dated today or later, never in the past
+  assert.equal(chore.dueDate, '2026-06-10');
 
   const done = (await app.inject({ method: 'POST', url: `/api/chores/${chore.id}/done`, cookies })).json();
   assert.equal(done.chore.status, 'upcoming');
@@ -48,7 +49,8 @@ test('chore lifecycle: create, due, done, undo, delete', async () => {
   assert.equal(hist.total, 1);
 
   const undone = (await app.inject({ method: 'DELETE', url: `/api/completions/${done.completionId}`, cookies })).json();
-  assert.equal(undone.status, 'overdue');
+  assert.equal(undone.status, 'due');
+  assert.equal(undone.dueDate, '2026-06-10');
 
   assert.equal((await app.inject({ method: 'DELETE', url: `/api/chores/${chore.id}`, cookies })).statusCode, 200);
   assert.equal((await app.inject({ url: '/api/chores', cookies })).json().length, 0);
@@ -288,7 +290,7 @@ test('calendar settings and sync endpoints', async () => {
   const plannedList = (await app.inject({ url: '/api/planned', cookies })).json();
   assert.equal(plannedList.length, 1);
   assert.equal(plannedList[0].title, 'Doctor Appointment');
-  assert.equal(plannedList[0].source, 'ics_import');
+  assert.equal(plannedList[0].source, 'calendar');
   assert.equal(plannedList[0].external_uid, 'import-event-1@google.com');
 
   // Idempotent re-import updates rather than duplicates
@@ -324,7 +326,7 @@ test('sync skips past events and advances recurring series', async () => {
   const list = async (q = '') => (await app.inject({ url: `/api/planned${q}`, cookies })).json();
   try {
     assert.equal((await sync()).count, 2);
-    let items = await list();
+    let items = await list('?status=pending');
     assert.deepEqual(items.map((i) => [i.title, i.start_date, i.recurring]), [['Future', '2026-06-12', false], ['Series', '2026-06-15', true]]);
 
     const series = items.find((i) => i.title === 'Series');
@@ -336,7 +338,7 @@ test('sync skips past events and advances recurring series', async () => {
     // later: Future is past and untouched, series advances and returns to pending
     clock = new Date(2026, 5, 16, 12);
     assert.equal((await sync()).count, 1);
-    items = await list();
+    items = await list('?status=pending');
     assert.equal(items.length, 2);
     const s2 = items.find((i) => i.title === 'Series');
     assert.equal(s2.start_date, '2026-06-22');

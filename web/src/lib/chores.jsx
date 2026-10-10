@@ -18,6 +18,19 @@ export function when(c) {
   return d === 1 ? 'tomorrow' : `in ${d} days`;
 }
 
+// Due text for an execution row (see GET /api/executions).
+export function whenExec(e) {
+  if (e.status === 'done') return 'done today';
+  const d = e.daysUntil;
+  if (e.status === 'overdue') return <b>overdue {Math.abs(d)}d</b>;
+  if (e.status === 'due') {
+    const flexible = e.window_start && e.window_start !== e.due_date;
+    if (!flexible || d === 0) return <b>due today</b>;
+    return <b>{d > 0 ? `window open, ideal in ${d}d` : `due (${-d}d past ideal)`}</b>;
+  }
+  return d === 1 ? 'tomorrow' : `in ${d} days`;
+}
+
 export const CATEGORIES = {
   cleaning: { emoji: '🧹', label: 'Cleaning' },
   household: { emoji: '🏠', label: 'Household' },
@@ -33,7 +46,7 @@ export function choreIcon(c) {
   if (icon) return icon;
   const cat = CATEGORIES[(c.category || '').trim()];
   if (cat) return cat.emoji;
-  return (c.name || '?').trim().charAt(0).toUpperCase() || '?';
+  return (c.name || c.title || '?').trim().charAt(0).toUpperCase() || '?';
 }
 
 export function CategoryBadge({ category }) {

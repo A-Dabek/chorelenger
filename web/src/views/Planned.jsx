@@ -12,7 +12,7 @@ function sortPlannedItems(list) {
 }
 
 function PlannedItemCard({ item, onConfirm, onEdit }) {
-  const isCalendar = item.source === 'calendar_sync' || item.source === 'ics_import';
+  const isCalendar = item.source !== 'manual';
   const isCompleted = item.status === 'completed';
   const isOverdue = !isCompleted && item.start_date < localToday();
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { schedule, addMonths } from './schedule.js';
+import { schedule, addMonths, nextDue, firstDue } from './schedule.js';
 
 const base = { interval_n: 1, interval_unit: 'day', window_days: 0, start_date: '2026-01-01' };
 
@@ -54,4 +54,41 @@ test('one_off: open is due with no dates, done is finished', () => {
   assert.equal(open.dueDate, null);
   assert.equal(open.daysUntil, 0);
   assert.equal(schedule(c, '2026-09-01', '2026-09-02').status, 'finished');
+});
+
+test('firstDue: start_date or today, calendar next occurrence, one_off today', () => {
+  const iv = { ...base, type: 'interval', start_date: '2026-03-01' };
+  assert.equal(firstDue(iv, '2026-03-05').dueDate, '2026-03-05');
+  assert.equal(firstDue(iv, '2026-02-01').dueDate, '2026-03-01');
+  const fl = { ...base, type: 'flexible', window_days: 3, start_date: '2026-03-10' };
+  const f = firstDue(fl, '2026-03-01');
+  assert.deepEqual(f, { dueDate: '2026-03-10', windowStart: '2026-03-07', overdueAfter: '2026-03-13' });
+  const cal = { type: 'calendar', cal_month: 4, cal_day: 1, start_date: '2026-01-01' };
+  assert.equal(firstDue(cal, '2026-03-05').dueDate, '2026-04-01');
+  assert.equal(firstDue(cal, '2026-04-02').dueDate, '2027-04-01');
+  assert.equal(firstDue({ type: 'one_off', start_date: '2026-01-01' }, '2026-03-05').dueDate, '2026-03-05');
+});
+
+test('nextDue: anchor done adds interval to the done date', () => {
+  const c = { ...base, type: 'interval', interval_n: 1, interval_unit: 'month', anchor: 'done' };
+  assert.equal(nextDue(c, { doneDate: '2026-02-10', dueDate: '2026-01-31', today: '2026-02-10' }).dueDate, '2026-03-10');
+  assert.equal(nextDue({ ...c, anchor: undefined }, { doneDate: '2026-02-10', dueDate: '2026-01-31', today: '2026-02-10' }).dueDate, '2026-03-10');
+});
+
+test('nextDue: anchor due keeps cadence and skips past dates; month-end clamps', () => {
+  const c = { ...base, type: 'interval', interval_n: 1, interval_unit: 'month', anchor: 'due' };
+  assert.equal(nextDue(c, { doneDate: '2026-02-10', dueDate: '2026-01-31', today: '2026-02-10' }).dueDate, '2026-02-28');
+  assert.equal(nextDue(c, { doneDate: '2026-05-20', dueDate: '2026-01-31', today: '2026-05-20' }).dueDate, '2026-05-31');
+  const w = { ...base, type: 'interval', interval_n: 1, interval_unit: 'week', anchor: 'due' };
+  assert.equal(nextDue(w, { doneDate: '2026-01-02', dueDate: '2026-01-01', today: '2026-01-02' }).dueDate, '2026-01-08');
+});
+
+test('nextDue: flexible keeps window; calendar goes to next year; one_off ends', () => {
+  const f = { ...base, type: 'flexible', window_days: 2, interval_n: 10, interval_unit: 'day' };
+  assert.deepEqual(nextDue(f, { doneDate: '2026-01-01', dueDate: '2026-01-01', today: '2026-01-01' }),
+    { dueDate: '2026-01-11', windowStart: '2026-01-09', overdueAfter: '2026-01-13' });
+  const cal = { type: 'calendar', cal_month: 4, cal_day: 1, start_date: '2026-01-01' };
+  assert.equal(nextDue(cal, { doneDate: '2026-03-20', dueDate: '2026-04-01', today: '2026-03-20' }).dueDate, '2027-04-01');
+  assert.equal(nextDue(cal, { doneDate: '2029-03-20', dueDate: '2026-04-01', today: '2029-03-20' }).dueDate, '2029-04-01');
+  assert.equal(nextDue({ type: 'one_off' }, { doneDate: '2026-01-01', dueDate: '2026-01-01', today: '2026-01-01' }), null);
 });

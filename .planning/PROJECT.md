@@ -29,6 +29,8 @@ I always know what needs doing and when — and actually doing it feels worthwhi
 - [ ] Informational achievements are awarded for patterns (e.g. "cleaned the house 3 months in a row, no skips")
 - [ ] Monthly reward measurement: base reward when execution ≥ 95% for the month; extra reward when extra executions of the monthly goal reach a threshold
 - [ ] The app only measures whether a reward was achieved — real-life rewarding is done by me
+- [ ] Everything to do is an execution (one per chore / calendar event UID / manual item, at most one active per source); Done moves it to history and generates the next; Undo from History restores it; Today shows Today / Week / Month horizons
+- [ ] Per-chore anchor decides whether the next due date counts from the done date or from the previous due date
 - [ ] Project is a PWA (installable, mobile-first) backed by a Node.js + SQLite API
 - [ ] Data persists in SQLite on the self-hosted backend
 - [ ] Single-user authentication protects the app because it is reachable over the internet
@@ -74,6 +76,7 @@ I always know what needs doing and when — and actually doing it feels worthwhi
 | Challenge effect: spotlight + bonus | Reinforces themes without complicating core tracking | — Pending |
 | Extras: theme-time only, unlimited count | Temporary thematic buttons avoid permanent UI clutter | — Pending |
 | Achievements: informational only | Pure motivation, no mechanism attached | — Pending |
+| Executions: single table with status, one active per source (partial unique index) | Replaces on-the-fly due state, completions and planned_items; makes undo/horizons trivial | Implemented 2026-10-10 |
 | Rewards: app measures only, fixed thresholds | Keeps scope small; I handle real-life reward | — Pending |
 
 ## Evolution

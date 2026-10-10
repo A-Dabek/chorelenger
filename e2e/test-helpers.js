@@ -7,6 +7,7 @@ export function resetDatabase() {
   const db = openDb(TEST_DB_PATH);
   try {
     db.exec(`
+      DELETE FROM executions;
       DELETE FROM completions;
       DELETE FROM extra_completions;
       DELETE FROM chores;

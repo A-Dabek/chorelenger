@@ -26,7 +26,7 @@ test.describe('Chore Lifecycle & Execution', () => {
 
     // Verify chore appears in list
     await expect(page.locator('.card .name')).toHaveText('Water house plants');
-    await expect(page.locator('.card .meta')).toContainText('plants');
+    await expect(page.locator('.card .meta')).toContainText('Misc');
     await expect(page.locator('.card .meta')).toContainText('every 2 days');
 
     // 3. Edit chore

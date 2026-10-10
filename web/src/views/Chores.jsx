@@ -4,7 +4,7 @@ import { MONTHS } from '../lib/dates.js';
 import { ChoreCard } from '../components/ChoreCard.jsx';
 import { ICON_SUGGESTIONS, CATEGORIES } from '../lib/chores.jsx';
 
-const blank = { name: '', category: 'misc', icon: '', type: 'interval', interval_n: 1, interval_unit: 'week', window_days: 7, cal_month: 1, cal_day: 1 };
+const blank = { name: '', category: 'misc', icon: '', type: 'interval', interval_n: 1, interval_unit: 'week', window_days: 7, cal_month: 1, cal_day: 1, anchor: 'done' };
 
 function ChoreForm({ chore, onSave, onCancel, onDelete }) {
   const [f, setF] = useState({ ...blank, ...chore, category: chore?.category in CATEGORIES ? chore.category : 'misc' });
@@ -13,7 +13,7 @@ function ChoreForm({ chore, onSave, onCancel, onDelete }) {
   const submit = async (e) => {
     e.preventDefault();
     try {
-      const body = { name: f.name, category: f.category, icon: f.icon, type: f.type, start_date: f.start_date };
+      const body = { name: f.name, category: f.category, icon: f.icon, type: f.type, start_date: f.start_date, anchor: f.anchor };
       if (f.type === 'interval' || f.type === 'flexible') Object.assign(body, { interval_n: f.interval_n, interval_unit: f.interval_unit });
       if (f.type === 'flexible') body.window_days = f.window_days;
       if (f.type === 'calendar') Object.assign(body, { cal_month: f.cal_month, cal_day: f.cal_day });
@@ -51,6 +51,14 @@ function ChoreForm({ chore, onSave, onCancel, onDelete }) {
             </select>
           </label>
         </div>
+      )}
+      {(f.type === 'interval' || f.type === 'flexible') && (
+        <label>Next due is counted from
+          <select value={f.anchor || 'done'} onChange={set('anchor')}>
+            <option value="done">the day I did it (a month after done)</option>
+            <option value="due">the previous due date (strictly monthly)</option>
+          </select>
+        </label>
       )}
       {f.type === 'flexible' && <label>Window (± days around ideal date)<input type="number" min="0" value={f.window_days} onInput={set('window_days', true)} /></label>}
       {f.type === 'calendar' && (

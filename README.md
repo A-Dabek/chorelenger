@@ -62,6 +62,23 @@ free-text categories keep showing as plain text until re-saved with a valid cate
 A *one-off* chore has no recurrence and no due date: it stays "due" in Today until done, then is finished
 permanently (visible greyed in the Chores list and in history; Undo reopens it).
 
+### Executions (what the Today page shows)
+
+An *execution* is one concrete to-do with a due date. Every chore has exactly one active execution
+(always dated today or later), and so does every calendar event UID; manual one-off items are executions too.
+Done moves the execution to History and generates the next one. Undo (History tab, or the toast) restores it and
+replaces the successor; only the latest done execution of a source can be undone (otherwise 409).
+Chores have a *Next due is counted from* setting (`anchor`): `done` (default, done date + interval) or `due`
+(previous due date + interval, strictly periodic). The Today page has a Today / Week / Month horizon toggle.
+
+API: `GET /api/executions?from=&to=`, `POST /api/executions/:id/done` → `{done, next}`,
+`POST /api/executions/:id/undo` → `{restored}`, `POST|PUT|DELETE /api/executions[/:id]` (manual/calendar rows),
+`GET /api/history?month=`. `/api/planned*`, `POST /api/chores/:id/done` and `DELETE /api/completions/:id` remain as
+thin compatibility aliases. `completions` and `planned_items` are no longer written; they are migrated once into
+`executions` at startup (idempotent) and kept for rollback.
+
+**Before deploying this version, back up `data/`** (e.g. `cp -r data data.bak`).
+
 ### Resetting the dev database
 
 `npm run db:reset` deletes the DB file (`CHORELENGER_DB` or `data/chorelenger.db`, plus `-wal`/`-shm`).

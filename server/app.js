@@ -2,7 +2,11 @@ import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { existsSync } from 'node:fs';
-import { schedule, localDate } from './schedule.js';
+import { localDate } from './schedule.js';
+import {
+  ExecError, tx, getExecution, insertExecution, presentExecution, createForChore, refreshForChore,
+  complete, undo, listExecutions, historyForMonth, legacyCompletions, syncCalendarExecutions,
+} from './executions.js';
 import { getChallengeForMonth } from './challenges.config.js';
 import {
   getSpotlightChoreIds,
@@ -10,13 +14,14 @@ import {
   calculateRewardStatus,
   evaluateAchievements,
 } from './motivation.js';
-import { parseIcs, fetchIcsFeed, resolveUpcoming } from './calendar.js';
+import { parseIcs, fetchIcsFeed } from './calendar.js';
 import {
   verifyPassword, createSession, checkSession, destroySession, createThrottle,
 } from './auth.js';
 
 const COOKIE = 'cl_session';
 const UNITS = ['day', 'week', 'month'];
+const ANCHORS = ['done', 'due'];
 export const CATEGORIES = ['cleaning', 'household', 'health', 'misc'];
 
 function validatePlannedItem(body, today) {
@@ -44,12 +49,26 @@ function validatePlannedItem(body, today) {
   };
 }
 
-function presentPlanned(item) {
-  if (!item) return null;
+// Legacy planned-item shape, now backed by calendar/manual executions.
+function presentPlanned(row) {
+  if (!row) return null;
   return {
-    ...item,
-    is_all_day: Boolean(item.is_all_day),
-    recurring: Boolean(item.rrule),
+    id: row.id,
+    title: row.title,
+    notes: row.notes,
+    start_date: row.due_date,
+    start_time: row.start_time,
+    end_time: row.end_time,
+    is_all_day: Boolean(row.is_all_day),
+    location: row.location,
+    source: row.source_type,
+    external_uid: row.source_key && row.source_key.startsWith('cal:') ? row.source_key.slice(4) : null,
+    status: row.status === 'done' ? 'completed' : 'pending',
+    completed_at: row.done_at,
+    rrule: row.rrule,
+    exdates: row.exdates,
+    recurring: Boolean(row.rrule),
+    created_at: row.created_at,
   };
 }
 
@@ -62,8 +81,10 @@ function validateChore(body, today) {
   const icon = typeof b.icon === 'string' ? b.icon.trim().slice(0, 32) : '';
   const type = b.type;
   const start_date = /^\d{4}-\d{2}-\d{2}$/.test(b.start_date || '') ? b.start_date : today;
+  const anchor = b.anchor === undefined || b.anchor === null || b.anchor === '' ? 'done' : b.anchor;
+  if (!ANCHORS.includes(anchor)) return { error: 'anchor must be done or due' };
   const out = {
-    name, category, icon, type, start_date,
+    name, category, icon, type, start_date, anchor,
     interval_n: null, interval_unit: null, cal_month: null, cal_day: null, window_days: 0,
   };
   if (type === 'interval' || type === 'flexible') {
@@ -140,19 +161,37 @@ export function buildApp({ db, passwordHash, secureCookies = false, webDir, now 
 
   app.get('/api/session', async () => ({ ok: true }));
 
-  const lastDoneStmt = db.prepare('SELECT MAX(done_date) AS d FROM completions WHERE chore_id = ?');
-  const countStmt = db.prepare('SELECT COUNT(*) AS n FROM completions WHERE chore_id = ?');
+  const lastDoneStmt = db.prepare("SELECT MAX(done_date) AS d, COUNT(*) AS n FROM executions WHERE source_key = ? AND status = 'done'");
+  const activeStmt = db.prepare("SELECT * FROM executions WHERE source_key = ? AND status = 'active'");
 
+  // Chore view for the management tab; due dates come from the chore's single active execution.
   function present(chore, t = today()) {
-    const lastDone = lastDoneStmt.get(chore.id).d || null;
+    const key = `chore:${chore.id}`;
+    const { d: lastDone, n: totalDone } = lastDoneStmt.get(key);
+    const active = activeStmt.get(key);
+    const base = { ...chore, lastDone: lastDone || null, doneToday: lastDone === t, totalDone };
+    if (chore.type === 'one_off') {
+      return {
+        ...base, dueDate: null, windowStart: null, overdueAfter: null, daysUntil: 0,
+        status: active ? 'due' : 'finished', finished: !active, executionId: active ? active.id : null,
+      };
+    }
+    const e = active ? presentExecution(active, t) : null;
     return {
-      ...chore,
-      lastDone,
-      doneToday: lastDone === t,
-      totalDone: countStmt.get(chore.id).n,
-      ...schedule(chore, lastDone, t),
-      finished: chore.type === 'one_off' && Boolean(lastDone),
+      ...base,
+      dueDate: e ? e.due_date : null,
+      windowStart: e ? e.window_start || e.due_date : null,
+      overdueAfter: e ? e.overdue_after || e.due_date : null,
+      daysUntil: e ? e.daysUntil : 0,
+      status: e ? e.status : 'upcoming',
+      finished: false,
+      executionId: e ? e.id : null,
     };
+  }
+
+  function execError(reply, e) {
+    if (e instanceof ExecError) return reply.code(e.code).send({ error: e.message });
+    throw e;
   }
 
   app.get('/api/chores', async () => {
@@ -166,11 +205,16 @@ export function buildApp({ db, passwordHash, secureCookies = false, webDir, now 
   app.post('/api/chores', async (req, reply) => {
     const { value, error } = validateChore(req.body, today());
     if (error) return reply.code(400).send({ error });
-    const r = db.prepare(`INSERT INTO chores
-      (name, category, icon, type, interval_n, interval_unit, cal_month, cal_day, window_days, start_date)
-      VALUES (@name, @category, @icon, @type, @interval_n, @interval_unit, @cal_month, @cal_day, @window_days, @start_date)`).run(value);
+    const id = tx(db, () => {
+      const r = db.prepare(`INSERT INTO chores
+        (name, category, icon, type, interval_n, interval_unit, cal_month, cal_day, window_days, start_date, anchor)
+        VALUES (@name, @category, @icon, @type, @interval_n, @interval_unit, @cal_month, @cal_day, @window_days, @start_date, @anchor)`).run(value);
+      const chore = db.prepare('SELECT * FROM chores WHERE id = ?').get(r.lastInsertRowid);
+      createForChore(db, chore, today());
+      return chore.id;
+    });
     reply.code(201);
-    return present(db.prepare('SELECT * FROM chores WHERE id = ?').get(r.lastInsertRowid));
+    return present(db.prepare('SELECT * FROM chores WHERE id = ?').get(id));
   });
 
   const getChore = (id) => db.prepare('SELECT * FROM chores WHERE id = ?').get(id);
@@ -180,9 +224,12 @@ export function buildApp({ db, passwordHash, secureCookies = false, webDir, now 
     if (!getChore(id)) return reply.code(404).send({ error: 'not found' });
     const { value, error } = validateChore(req.body, today());
     if (error) return reply.code(400).send({ error });
-    db.prepare(`UPDATE chores SET name=@name, category=@category, icon=@icon, type=@type, interval_n=@interval_n,
-      interval_unit=@interval_unit, cal_month=@cal_month, cal_day=@cal_day, window_days=@window_days,
-      start_date=@start_date WHERE id=@id`).run({ ...value, id });
+    tx(db, () => {
+      db.prepare(`UPDATE chores SET name=@name, category=@category, icon=@icon, type=@type, interval_n=@interval_n,
+        interval_unit=@interval_unit, cal_month=@cal_month, cal_day=@cal_day, window_days=@window_days,
+        start_date=@start_date, anchor=@anchor WHERE id=@id`).run({ ...value, id });
+      refreshForChore(db, getChore(id), today());
+    });
     return present(getChore(id));
   });
 
@@ -192,28 +239,91 @@ export function buildApp({ db, passwordHash, secureCookies = false, webDir, now 
     return { ok: true };
   });
 
-  // One tap = done. Returns the updated chore plus the completion id so the UI can offer undo.
+  // ----- Executions -----
+  app.get('/api/executions', async (req, reply) => {
+    const { from, to } = req.query || {};
+    const isDate = (v) => v === undefined || /^\d{4}-\d{2}-\d{2}$/.test(v);
+    if (!isDate(from) || !isDate(to)) return reply.code(400).send({ error: 'from/to must be YYYY-MM-DD' });
+    return listExecutions(db, { from, to, today: today() });
+  });
+
+  app.post('/api/executions/:id/done', async (req, reply) => {
+    try {
+      const t = today();
+      const { done, next } = complete(db, Number(req.params.id), t);
+      return { done: presentExecution(done, t), next: presentExecution(next, t) };
+    } catch (e) { return execError(reply, e); }
+  });
+
+  app.post('/api/executions/:id/undo', async (req, reply) => {
+    try {
+      return { restored: presentExecution(undo(db, Number(req.params.id)), today()) };
+    } catch (e) { return execError(reply, e); }
+  });
+
+  app.post('/api/executions', async (req, reply) => {
+    const { value, error } = validatePlannedItem(req.body, today());
+    if (error) return reply.code(400).send({ error });
+    const { start_date, ...rest } = value;
+    reply.code(201);
+    return presentExecution(insertExecution(db, { ...rest, source_type: 'manual', due_date: start_date }), today());
+  });
+
+  app.put('/api/executions/:id', async (req, reply) => {
+    const id = Number(req.params.id);
+    const ex = getExecution(db, id);
+    if (!ex) return reply.code(404).send({ error: 'not found' });
+    if (ex.source_type === 'chore') return reply.code(400).send({ error: 'edit the chore instead' });
+    const { value, error } = validatePlannedItem(req.body, today());
+    if (error) return reply.code(400).send({ error });
+    const { start_date, ...rest } = value;
+    db.prepare(`UPDATE executions SET title=@title, notes=@notes, due_date=@due_date, start_time=@start_time,
+      end_time=@end_time, is_all_day=@is_all_day, location=@location WHERE id=@id`).run({ ...rest, due_date: start_date, id });
+    return presentExecution(getExecution(db, id), today());
+  });
+
+  app.delete('/api/executions/:id', async (req, reply) => {
+    const ex = getExecution(db, Number(req.params.id));
+    if (!ex) return reply.code(404).send({ error: 'not found' });
+    if (ex.source_type === 'chore') return reply.code(400).send({ error: 'delete the chore instead' });
+    db.prepare('DELETE FROM executions WHERE id = ?').run(ex.id);
+    return { ok: true };
+  });
+
+  // Legacy aliases kept for the existing UI: one tap = done, DELETE completion = undo.
   app.post('/api/chores/:id/done', async (req, reply) => {
     const id = Number(req.params.id);
     if (!getChore(id)) return reply.code(404).send({ error: 'not found' });
-    const r = db.prepare('INSERT INTO completions (chore_id, done_date) VALUES (?, ?)').run(id, today());
-    return { completionId: Number(r.lastInsertRowid), chore: present(getChore(id)) };
+    const active = activeStmt.get(`chore:${id}`);
+    if (!active) return reply.code(409).send({ error: 'nothing to do' });
+    const { done } = complete(db, active.id, today());
+    return { completionId: done.id, executionId: done.id, chore: present(getChore(id)) };
   });
 
   app.delete('/api/completions/:id', async (req, reply) => {
-    const row = db.prepare('SELECT chore_id FROM completions WHERE id = ?').get(Number(req.params.id));
-    if (!row) return reply.code(404).send({ error: 'not found' });
-    db.prepare('DELETE FROM completions WHERE id = ?').run(Number(req.params.id));
+    const row = getExecution(db, Number(req.params.id));
+    if (!row || row.status !== 'done' || !row.chore_id) return reply.code(404).send({ error: 'not found' });
+    try {
+      undo(db, row.id);
+    } catch (e) { return execError(reply, e); }
     return present(getChore(row.chore_id));
   });
 
-  // Completions per chore for a month: /api/history?month=YYYY-MM
+  // Done executions for a month: /api/history?month=YYYY-MM
   app.get('/api/history', async (req, reply) => {
     const month = req.query.month || today().slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(month)) return reply.code(400).send({ error: 'month must be YYYY-MM' });
-    const rows = db.prepare(`SELECT c.id AS completionId, c.chore_id AS choreId, ch.name, ch.category, c.done_date AS date
-      FROM completions c JOIN chores ch ON ch.id = c.chore_id
-      WHERE substr(c.done_date, 1, 7) = ? ORDER BY c.done_date DESC, c.id DESC`).all(month);
+    const rows = historyForMonth(db, month).map((e) => ({
+      completionId: e.id,
+      executionId: e.id,
+      choreId: e.chore_id,
+      sourceType: e.source_type,
+      name: e.title,
+      icon: e.icon,
+      category: e.category,
+      date: e.done_date,
+      canUndo: Boolean(e.can_undo),
+    }));
     return { month, total: rows.length, completions: rows };
   });
 
@@ -274,7 +384,7 @@ export function buildApp({ db, passwordHash, secureCookies = false, webDir, now 
     if (!/^\d{4}-\d{2}$/.test(m)) return reply.code(400).send({ error: 'month must be YYYY-MM' });
     const challenge = getChallengeForMonth(m);
     const chores = db.prepare('SELECT * FROM chores').all();
-    const completions = db.prepare('SELECT * FROM completions').all();
+    const completions = legacyCompletions(db);
     const extraCompletions = db.prepare('SELECT * FROM extra_completions').all();
 
     const distinctMonthsSet = new Set();
@@ -313,71 +423,73 @@ export function buildApp({ db, passwordHash, secureCookies = false, webDir, now 
     };
   });
 
-  // Planned items endpoints
+  // Planned items: compatibility layer over calendar/manual executions.
+  const getPlanned = (id) => {
+    const row = getExecution(db, id);
+    return row && row.source_type !== 'chore' ? row : null;
+  };
+
   app.get('/api/planned', async (req) => {
     const { status, from_date, to_date } = req.query || {};
-    let query = 'SELECT * FROM planned_items WHERE 1=1';
+    let query = "SELECT * FROM executions WHERE source_type IN ('calendar','manual')";
     const params = {};
-    if (status && (status === 'pending' || status === 'completed')) {
+    if (status === 'pending' || status === 'completed') {
       query += ' AND status = @status';
-      params.status = status;
+      params.status = status === 'pending' ? 'active' : 'done';
     }
     if (from_date && /^\d{4}-\d{2}-\d{2}$/.test(from_date)) {
-      query += ' AND start_date >= @from_date';
+      query += ' AND due_date >= @from_date';
       params.from_date = from_date;
     }
     if (to_date && /^\d{4}-\d{2}-\d{2}$/.test(to_date)) {
-      query += ' AND start_date <= @to_date';
+      query += ' AND due_date <= @to_date';
       params.to_date = to_date;
     }
-    query += ' ORDER BY start_date ASC, CASE WHEN start_time IS NULL THEN 0 ELSE 1 END, start_time ASC, id ASC';
+    query += ' ORDER BY due_date ASC, CASE WHEN start_time IS NULL THEN 0 ELSE 1 END, start_time ASC, id ASC';
     return db.prepare(query).all(params).map(presentPlanned);
   });
 
   app.post('/api/planned', async (req, reply) => {
     const { value, error } = validatePlannedItem(req.body, today());
     if (error) return reply.code(400).send({ error });
-    const r = db.prepare(`INSERT INTO planned_items
-      (title, notes, start_date, start_time, end_time, is_all_day, location, source, status)
-      VALUES (@title, @notes, @start_date, @start_time, @end_time, @is_all_day, @location, 'manual', 'pending')`).run(value);
+    const { start_date, ...rest } = value;
     reply.code(201);
-    return presentPlanned(db.prepare('SELECT * FROM planned_items WHERE id = ?').get(r.lastInsertRowid));
+    return presentPlanned(insertExecution(db, { ...rest, source_type: 'manual', due_date: start_date }));
   });
 
   app.put('/api/planned/:id', async (req, reply) => {
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM planned_items WHERE id = ?').get(id);
-    if (!existing) return reply.code(404).send({ error: 'not found' });
+    if (!getPlanned(id)) return reply.code(404).send({ error: 'not found' });
     const { value, error } = validatePlannedItem(req.body, today());
     if (error) return reply.code(400).send({ error });
-    db.prepare(`UPDATE planned_items SET
-      title=@title, notes=@notes, start_date=@start_date, start_time=@start_time,
-      end_time=@end_time, is_all_day=@is_all_day, location=@location
-      WHERE id=@id`).run({ ...value, id });
-    return presentPlanned(db.prepare('SELECT * FROM planned_items WHERE id = ?').get(id));
+    const { start_date, ...rest } = value;
+    db.prepare(`UPDATE executions SET title=@title, notes=@notes, due_date=@due_date, start_time=@start_time,
+      end_time=@end_time, is_all_day=@is_all_day, location=@location WHERE id=@id`).run({ ...rest, due_date: start_date, id });
+    return presentPlanned(getExecution(db, id));
   });
 
   app.delete('/api/planned/:id', async (req, reply) => {
-    const r = db.prepare('DELETE FROM planned_items WHERE id = ?').run(Number(req.params.id));
-    if (!r.changes) return reply.code(404).send({ error: 'not found' });
+    const id = Number(req.params.id);
+    if (!getPlanned(id)) return reply.code(404).send({ error: 'not found' });
+    db.prepare('DELETE FROM executions WHERE id = ?').run(id);
     return { ok: true };
   });
 
   app.post('/api/planned/:id/confirm', async (req, reply) => {
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM planned_items WHERE id = ?').get(id);
-    if (!existing) return reply.code(404).send({ error: 'not found' });
-    const completedAt = new Date().toISOString();
-    db.prepare("UPDATE planned_items SET status = 'completed', completed_at = ? WHERE id = ?").run(completedAt, id);
-    return { ok: true, item: presentPlanned(db.prepare('SELECT * FROM planned_items WHERE id = ?').get(id)) };
+    if (!getPlanned(id)) return reply.code(404).send({ error: 'not found' });
+    try {
+      const { done, next } = complete(db, id, today());
+      return { ok: true, item: presentPlanned(done), next: presentPlanned(next) };
+    } catch (e) { return execError(reply, e); }
   });
 
   app.delete('/api/planned/:id/confirm', async (req, reply) => {
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM planned_items WHERE id = ?').get(id);
-    if (!existing) return reply.code(404).send({ error: 'not found' });
-    db.prepare("UPDATE planned_items SET status = 'pending', completed_at = NULL WHERE id = ?").run(id);
-    return { ok: true, item: presentPlanned(db.prepare('SELECT * FROM planned_items WHERE id = ?').get(id)) };
+    if (!getPlanned(id)) return reply.code(404).send({ error: 'not found' });
+    try {
+      return { ok: true, item: presentPlanned(undo(db, id)) };
+    } catch (e) { return execError(reply, e); }
   });
 
   app.get('/api/settings/calendar', async () => {
@@ -393,40 +505,11 @@ export function buildApp({ db, passwordHash, secureCookies = false, webDir, now 
     return { feedUrl };
   });
 
-  // Upserts upcoming calendar events by UID. Past one-off rows are never touched;
-  // a recurring row that advanced to a later occurrence returns to pending.
-  function upsertCalendarEvents(events, source) {
-    const todayStr = today();
-    let count = 0;
-    for (const ev of resolveUpcoming(events, todayStr)) {
-      if (ev.external_uid) {
-        const existing = db.prepare('SELECT id, start_date FROM planned_items WHERE external_uid = ?').get(ev.external_uid);
-        if (existing) {
-          if (!ev.rrule && existing.start_date < todayStr) continue;
-          const advanced = ev.rrule && ev.start_date > existing.start_date;
-          db.prepare(`UPDATE planned_items SET
-            title = @title, notes = @notes, start_date = @start_date, start_time = @start_time,
-            end_time = @end_time, is_all_day = @is_all_day, location = @location, source = @source,
-            external_uid = @external_uid, rrule = @rrule, exdates = @exdates
-            ${advanced ? ", status = 'pending', completed_at = NULL" : ''}
-            WHERE id = @id`).run({ ...ev, source, id: existing.id });
-          count++;
-          continue;
-        }
-      }
-      db.prepare(`INSERT INTO planned_items
-        (title, notes, start_date, start_time, end_time, is_all_day, location, source, external_uid, rrule, exdates, status)
-        VALUES (@title, @notes, @start_date, @start_time, @end_time, @is_all_day, @location, @source, @external_uid, @rrule, @exdates, 'pending')`).run({ ...ev, source });
-      count++;
-    }
-    return count;
-  }
-
   app.post('/api/planned/import-ics', async (req, reply) => {
     const ics = req.body && typeof req.body.ics === 'string' ? req.body.ics : '';
     if (!ics.trim()) return reply.code(400).send({ error: 'ics text payload is required' });
     const events = parseIcs(ics);
-    const importedCount = upsertCalendarEvents(events, 'ics_import');
+    const importedCount = syncCalendarExecutions(db, events, today());
     return { ok: true, importedCount, eventsCount: events.length };
   });
 
@@ -445,7 +528,7 @@ export function buildApp({ db, passwordHash, secureCookies = false, webDir, now 
     }
 
     const events = parseIcs(icsText);
-    const syncedCount = upsertCalendarEvents(events, 'calendar_sync');
+    const syncedCount = syncCalendarExecutions(db, events, today());
 
     return { ok: true, synced: true, count: syncedCount, eventsCount: events.length };
   });

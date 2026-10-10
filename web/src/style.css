@@ -153,3 +153,4 @@ button.cal-item { width:100%; text-align:left; color:inherit; font:inherit; bord
 button.cal-item .info { display:flex; flex-direction:column; flex:1; min-width:0; }
 button.cal-item .cal-ack { font-weight:700; color:var(--accent, #2a7); white-space:nowrap; }
 button.cal-item:disabled { cursor:default; }
+.horizon { display:flex; gap:4px; margin-left:auto; margin-right:8px; } .horizon-btn { padding:6px 10px; font-size:.85rem; min-height:36px; } .horizon-btn.on { background:var(--green); color:#fff; } .history-undo { padding:6px 10px; font-size:.85rem; min-height:36px; }

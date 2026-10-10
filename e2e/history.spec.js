@@ -28,6 +28,56 @@ test.describe('History Log', () => {
     await page.click('nav button:has-text("History")');
     await expect(page.locator('h2')).toHaveText('1 completion');
     await expect(page.locator('.card .name')).toHaveText('Sweep balcony');
-    await expect(page.locator('.card .meta')).toContainText('home');
+    await expect(page.locator('.card .meta')).toContainText('misc');
+  });
+});
+
+test.describe('Executions: horizon and undo', () => {
+  test.beforeEach(async ({ page }) => {
+    resetDatabase();
+    await login(page);
+  });
+
+  async function addChore(page, name, startDate) {
+    await page.click('nav button:has-text("Chores")');
+    await page.click('button:has-text("+ Add")');
+    await page.fill('label:has-text("Name") input', name);
+    if (startDate) await page.fill('label:has-text("First due") input', startDate);
+    await page.click('button:has-text("Save")');
+  }
+  const isoIn = (days) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+
+  test('Today / Week / Month toggle widens the upcoming horizon', async ({ page }) => {
+    await addChore(page, 'Soon', isoIn(3));
+    await addChore(page, 'Later', isoIn(20));
+    await page.click('nav button:has-text("Today")');
+    await expect(page.locator('.tile')).toHaveCount(0);
+    await page.click('.horizon-btn:has-text("Week")');
+    await expect(page.locator('.tile')).toHaveCount(1);
+    await expect(page.locator('section[data-status="upcoming"] .tile[aria-label="Soon"]')).toBeVisible();
+    await page.click('.horizon-btn:has-text("Month")');
+    await expect(page.locator('.tile')).toHaveCount(2);
+  });
+
+  test('done then Undo from History restores the chore as the only active execution', async ({ page }) => {
+    await addChore(page, 'Mop floor');
+    await page.click('nav button:has-text("Today")');
+    await page.click('section[data-status="due"] .tile');
+    await page.click('.sheet-done');
+    await expect(page.locator('section[data-status="done"] .tile')).toHaveCount(1);
+
+    await page.click('nav button:has-text("History")');
+    await expect(page.locator('h2')).toHaveText('1 completion');
+    await page.click('.history-undo');
+    await expect(page.locator('h2')).toHaveText('0 completions');
+
+    await page.click('nav button:has-text("Today")');
+    await expect(page.locator('section[data-status="due"] .tile[aria-label="Mop floor"]')).toHaveCount(1);
+    await expect(page.locator('section[data-status="done"]')).toHaveCount(0);
   });
 });

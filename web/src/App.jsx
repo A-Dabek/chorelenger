@@ -7,40 +7,55 @@ import { PlannedView } from './views/Planned.jsx';
 import { Chores } from './views/Chores.jsx';
 import { MotivationView } from './views/Motivation.jsx';
 import { History } from './views/History.jsx';
+import { localToday, addDays } from './lib/dates.js';
+
+const HORIZON_KEY = 'chorelenger.horizon';
+export const HORIZONS = { today: ['Today', 0], week: ['Week', 7], month: ['Month', 31] };
 
 export function App() {
   const [authed, setAuthed] = useState(null);
   const [tab, setTab] = useTabRoute();
   const [chores, setChores] = useState([]);
-  const [planned, setPlanned] = useState([]);
+  const [executions, setExecutions] = useState([]);
+  const [horizon, setHorizon] = useState(() => {
+    try { const h = localStorage.getItem(HORIZON_KEY); return h in HORIZONS ? h : 'today'; } catch { return 'today'; }
+  });
   const [challengeData, setChallengeData] = useState(null);
   const [toast, setToast] = useState(null);
 
   const reload = useCallback(async () => {
     try {
-      const [choresList, chal, plannedList] = await Promise.all([
+      const to = addDays(localToday(), HORIZONS[horizon][1]);
+      const [choresList, chal, execList] = await Promise.all([
         api('GET', '/api/chores'),
         api('GET', '/api/challenge/current'),
-        api('GET', '/api/planned'),
+        api('GET', `/api/executions?to=${to}`),
       ]);
       setChores(choresList);
-      setPlanned(plannedList);
+      setExecutions(execList);
       setChallengeData(chal);
       setAuthed(true);
     } catch (e) {
       if (e instanceof AuthError) setAuthed(false);
     }
-  }, []);
+  }, [horizon]);
 
   useEffect(() => { reload(); }, [reload, tab]);
+  const changeHorizon = (h) => {
+    setHorizon(h);
+    try { localStorage.setItem(HORIZON_KEY, h); } catch { /* ignore */ }
+  };
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 6000); return () => clearTimeout(t); }, [toast]);
 
-  const markDone = async (c) => {
+  // One tap = done on an execution (chore, calendar event or one-off). Undo goes through its id.
+  const markDone = async (e) => {
     try {
-      const r = await api('POST', `/api/chores/${c.id}/done`);
-      setToast({ text: `${c.name} done ✓`, completionId: r.completionId });
+      const title = e.title || e.name;
+      const isCal = (e.source_type || e.source) === 'calendar';
+      await api('POST', `/api/executions/${e.id}/done`);
+      setToast({ text: isCal ? `Acknowledged: ${title} ✓` : `${title} done ✓`, executionId: e.id });
       reload();
-    } catch (e) { if (e instanceof AuthError) setAuthed(false); }
+    } catch (x) { if (x instanceof AuthError) setAuthed(false); }
   };
 
   const logExtra = async (ex) => {
@@ -51,26 +66,12 @@ export function App() {
     } catch (e) { if (e instanceof AuthError) setAuthed(false); }
   };
 
-  const confirmPlanned = async (item) => {
-    try {
-      const isCalendar = item.source === 'calendar_sync' || item.source === 'ics_import';
-      await api('POST', `/api/planned/${item.id}/confirm`);
-      setToast({
-        text: isCalendar ? `Acknowledged: ${item.title} ✓` : `${item.title} done ✓`,
-        plannedId: item.id,
-      });
-      reload();
-    } catch (e) { if (e instanceof AuthError) setAuthed(false); }
-  };
-
   const undo = async () => {
     if (!toast) return;
-    if (toast.completionId) {
-      await api('DELETE', `/api/completions/${toast.completionId}`);
+    if (toast.executionId) {
+      await api('POST', `/api/executions/${toast.executionId}/undo`);
     } else if (toast.extraCompletionId) {
       await api('DELETE', `/api/challenge/extra/${toast.extraCompletionId}`);
-    } else if (toast.plannedId) {
-      await api('DELETE', `/api/planned/${toast.plannedId}/confirm`);
     }
     setToast(null);
     reload();
@@ -82,11 +83,11 @@ export function App() {
   return (
     <>
       <main>
-        {tab === 'today' && <Today chores={chores} planned={planned} onAcknowledge={confirmPlanned} challengeData={challengeData} onDone={markDone} onExtra={logExtra} />}
-        {tab === 'planned' && <PlannedView onConfirm={confirmPlanned} toast={toast} />}
+        {tab === 'today' && <Today executions={executions} horizon={horizon} onHorizon={changeHorizon} challengeData={challengeData} onDone={markDone} onExtra={logExtra} />}
+        {tab === 'planned' && <PlannedView onConfirm={markDone} toast={toast} />}
         {tab === 'chores' && <Chores chores={chores} reload={reload} />}
         {tab === 'motivation' && <MotivationView />}
-        {tab === 'history' && <History />}
+        {tab === 'history' && <History onUndo={reload} />}
         {tab === 'history' && <p><button class="ghost" onClick={async () => { await api('POST', '/api/logout', {}); setAuthed(false); }}>Log out</button></p>}
       </main>
       {toast && <div class="toast"><span>{toast.text}</span><button onClick={undo}>Undo</button></div>}

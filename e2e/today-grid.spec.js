@@ -23,7 +23,7 @@ test.describe('Today compact icon grid', () => {
     await page.click('nav button:has-text("Today")');
 
     await expect(page.locator('.tile[aria-label="Walk dog"] .chore-emoji')).toHaveText('🐕');
-    await expect(page.locator('.tile[aria-label="Vacuum"] .chore-emoji')).toHaveText('V');
+    await expect(page.locator('.tile[aria-label="Vacuum"] .chore-emoji')).toHaveText('📌');
 
     await page.click('.tile[aria-label="Walk dog"]');
     await expect(page.locator('.sheet')).toBeVisible();
