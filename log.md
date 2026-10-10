@@ -79,3 +79,27 @@ Append-only record of everything that happens in this project. See `AGENTS.md` f
   - `e2e/planned-items.spec.js`: Added E2E tests verifying that past events from previous years are categorized into Overdue (not Today), and verifying mobile viewport rendering without horizontal page overflow.
 - Verification: `npm test` (24/24 passing unit & API tests); `npm run build` (client bundle compiled cleanly in 57ms); `npm run test:e2e` (12/12 Playwright E2E tests passing).
 - Open issues / follow-ups: None.
+
+## 2026-10-10 20:30 — URL routing for main tabs
+- What was requested / why: Main tabs shared one route; add real routes.
+- What changed: `web/src/main.jsx` — dependency-free History API router (`useTabRoute`): `/`, `/planned`, `/chores`, `/motivation`, `/history`; nav pushes state, back/forward via `popstate`, unknown paths show Today. Server SPA fallback (`setNotFoundHandler`) already serves index.html for deep links.
+- Verification: see below run of `npm run build` and `npm test`.
+- Open issues / follow-ups: none.
+
+## 2026-10-10 20:45 — Split web/src/main.jsx into modules
+- What was requested / why: `main.jsx` was huge; split into separate files.
+- What changed: `main.jsx` is now only the entry point (render + service worker). New: `App.jsx` (state, toast/undo, nav); `views/` (Today, Chores incl. ChoreForm, Planned incl. card/form, History, Motivation); `components/` (Login, ChoreCard, ChallengeBanner); `lib/` (dates.js, calendar.js, chores.jsx, router.js). Code moved verbatim, no behavior change.
+- Verification: `npm run build` and `npm test` (results reported in session summary).
+- Open issues / follow-ups: Playwright e2e not run.
+
+## 2026-10-10 20:55 — Playwright e2e run after main.jsx split
+- What was requested / why: user pointed out e2e should have been run after the refactor to catch regressions.
+- What changed: nothing in code; ran `npm run build` then `npx playwright test`.
+- Verification: Playwright 12/12 passed (6.5s); this also covers the earlier routing change. Unit/API tests 24/24 earlier.
+- Open issues / follow-ups: Going forward, run `npm run test:e2e` in addition to `npm test` for any frontend change.
+
+## 2026-10-10 20:25 — Commit routing and main.jsx split
+- Requested: commit the tab routing and the `main.jsx` split.
+- Changed: committed `web/src/` (App, views, components, lib, router) and `log.md`.
+- Verification: build, `npm test` (24/24) and Playwright (12/12) passed before the commit.
+- Open issues: none.
