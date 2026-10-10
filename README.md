@@ -4,12 +4,17 @@ Personal chore tracker PWA. Fastify + `node:sqlite` backend, Preact + Vite front
 
 ## Status
 
-Implemented (v0 slice): single-user password auth (scrypt, session cookie, login throttle), chores with
-three recurrence models (interval / flexible window / yearly calendar date), Today dashboard
-(overdue / due / upcoming), one-tap done with undo, monthly history, installable PWA shell.
+Implemented:
+- Single-user password auth (scrypt, session cookie, login throttle).
+- Chores with three recurrence models (interval / flexible window / yearly calendar date), Today dashboard (overdue / due / upcoming), one-tap done with undo, monthly history, installable PWA shell.
+- Monthly themed challenges with spotlighted chores, quick-tap extra counter buttons, objective monthly reward measurement (≥95% base execution + extra goal target), and milestone achievements.
+- **Planned Items & Calendar Integration**:
+  - One-off task tracking with date, time, location, notes, and 1-tap "Add to Google Calendar" web intent links.
+  - Read-only calendar sync via private iCal feed URL polling (`webcal://` or `https://...basic.ics`) and drag-and-drop `.ics` file import.
+  - Visual source differentiation (`📝 One-Off Task` vs `📅 Calendar Event`).
+  - Dual confirmation lifecycles: "Done" for tasks vs "Acknowledge" for calendar reminders, with 6-second undo toast support.
 
-Deferred: web push notifications, monthly themed challenges + extra buttons, achievements,
-monthly reward measurement.
+Deferred: web push notifications.
 
 ## Develop (WSL)
 
@@ -19,7 +24,8 @@ npm run hash-password -- 'your-password'     # prints CHORELENGER_PASSWORD_HASH=
 export CHORELENGER_PASSWORD_HASH='...'
 npm run dev:server        # API on :3000 (data in ./data/chorelenger.db)
 npm run dev:web           # Vite on :5173, proxies /api to :3000
-npm test
+npm test                  # Unit & API tests
+npm run test:e2e          # Playwright E2E tests
 ```
 
 ## Deploy (Termux)

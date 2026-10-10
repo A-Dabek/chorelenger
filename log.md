@@ -28,3 +28,54 @@ Append-only record of everything that happens in this project. See `AGENTS.md` f
 - Changed: added `.idea/` to `.gitignore`; committed the implementation slice, docs, `AGENTS.md` and `log.md`.
 - Verification: not re-run (no code changes since the last `npm test`).
 - Open issues: none new.
+
+## 2026-10-10 18:36 — Iteration 2: Motivation Subsystem, Monthly Challenges & Achievements
+- What was requested / why: Implement the second iteration of Chorelenger introducing monthly challenges, thematic spotlighting, unlimited-count extra action buttons with instant logging/undo, objective monthly reward measurement (≥95% base execution and extra goal tracking), informational achievement badges, and Termux runtime flags.
+- What changed:
+  - `server/challenges.config.js`: Preset 12 monthly challenges with seasonal themes, spotlight categories, extra goal targets, and quick-tap extra button definitions.
+  - `server/db.js`: Created `extra_completions` table with indices on month, extra_id, and done_date.
+  - `server/motivation.js`: Implemented pure calculation functions for expected chore occurrences, monthly execution rates, reward qualification math, chore spotlight matching, and 9 milestone achievements.
+  - `server/motivation.test.js`: Added 5 unit test suites validating recurrence math, edge cases, thresholds, and achievement unlocking.
+  - `server/app.js` & `server/app.test.js`: Registered authenticated Fastify endpoints (`GET /api/challenge/current`, `POST /api/challenge/extra`, `DELETE /api/challenge/extra/:id`, `GET /api/motivation`) and added integration tests.
+  - `web/src/main.jsx` & `web/src/style.css`: Added Today challenge banner with extra goal progress bar, quick-tap extra buttons with 6-second undo toast, spotlight chore badges, new Motivation tab with Monthly Reward cards and Achievements gallery, and client local date handling in History.
+  - `package.json`: Updated `start` script with `--experimental-sqlite` for Node 22.5–22.12 on Termux.
+- Verification: `npm test` 17 passing (unit and integration tests); `npm run build` bundled client assets successfully (0 errors).
+- Open issues / follow-ups: Web push notifications deferred to Iteration 3.
+
+## 2026-10-10 18:55 — Playwright E2E Black-Box Testing Setup
+- What was requested / why: Set up Playwright end-to-end testing with black-box coverage across all critical user journeys.
+- What changed:
+  - Installed `@playwright/test` and Chromium browser binaries as dev dependencies.
+  - `playwright.config.js`: Configured Playwright with in-process global setup / teardown serving the production web build against an isolated SQLite test database (`data/e2e-test.db`).
+  - `e2e/test-helpers.js`: Created database reset and authentication test helpers.
+  - `e2e/auth.spec.js`: Black-box tests for login screen visibility, invalid password error handling, and logout flow.
+  - `e2e/chores.spec.js`: Black-box tests for chore creation (interval, flexible window, calendar yearly), editing, Today due status, one-tap done, 6-second undo toast, persistence across reload, and deletion.
+  - `e2e/challenge-motivation.spec.js`: Black-box tests for monthly challenge banner, extra button click counter and undo, theme chore spotlighting, motivation reward cards, and unlocked/locked achievements.
+  - `e2e/history.spec.js`: Black-box tests for monthly completion log display.
+  - `package.json`: Added `test:e2e` script (`playwright test`).
+  - `README.md` & `.gitignore`: Updated dev test commands and ignored Playwright report and artifact outputs.
+- Verification: `npm run test:e2e` executed all 7 Playwright E2E tests in ~4.2s (all passing); `npm test` verified 17 unit and API tests pass; `npm run build` clean (0 errors).
+- Open issues / follow-ups: None.
+
+## 2026-10-10 19:41 — Iteration 3: Planned Items, Calendar Feed Sync & Google Calendar Intents
+- What was requested / why: Implement planned items and calendar integration allowing users to capture one-off tasks with timeframes, generate 1-tap Google Calendar web intent links, sync external calendar events via private iCal feed URL polling (`webcal://` or `https://`), import `.ics` files, and utilize dual confirmation workflows ("Done" vs "Acknowledge") with 6-second undo toasts.
+- What changed:
+  - `server/calendar.js` & `server/calendar.test.js`: Built pure RFC 5545 parser and fetcher with line unfolding, timezone handling, and unit test suite.
+  - `server/db.js`: Created `app_settings` and `planned_items` tables with date, status, and UID indices.
+  - `server/app.js` & `server/app.test.js`: Added REST API routes (`/api/planned`, `/api/settings/calendar`, `/api/planned/import-ics`, `/api/planned/sync`, confirm/undo endpoints) and integration test suites.
+  - `web/src/main.jsx` & `web/src/style.css`: Added Planned tab, visual source badges (`📝 One-Off Task` vs `📅 Calendar Event`), Google Calendar Web Intent link builder, dual confirmation actions, 6-second undo toast, and calendar sync settings with `.ics` dropzone.
+  - `e2e/planned-items.spec.js`: Added Playwright E2E black-box test suite for planned task creation, Google Calendar link generation, iCal feed sync setup, .ics drag-and-drop, and confirmation/undo lifecycles.
+  - `README.md` & `.planning/PROJECT.md`: Updated project requirements and status.
+- Verification: `npm test` (24 passing unit & API tests); `npm run build` (client bundle built with 0 errors); `npm run test:e2e` (all 10 Playwright E2E tests passing).
+- Open issues / follow-ups: Web push notifications deferred.
+
+## 2026-10-10 20:15 — Fix Mobile View Layout Overflow & Planned Date Grouping
+- What was requested / why: Fix mobile layout overflow in the Planned tab and fix date grouping where historical calendar events (e.g. from 8 years ago) were incorrectly grouped into "Today".
+- What changed:
+  - `web/src/main.jsx`: Corrected date grouping so "Today" strictly matches `start_date === todayStr`, added dedicated "Overdue" section for past pending items (`start_date < todayStr`), added date/time sorting per section, and separated date and time input rows in `PlannedItemForm` to prevent native mobile date/time picker crowding.
+  - `web/src/style.css`: Added responsive styling with `@media (max-width: 520px)`, card stacking, flex wrapping on action buttons, word-break protections, and `overflow-x: hidden` to eliminate horizontal page overflow on small viewports.
+  - `server/calendar.js`: Improved RFC 5545 date-time parsing for values with `VALUE=DATE:` or `VALUE=DATE-TIME:` prefixes, added URL whitespace trimming and redirect following in `fetchIcsFeed`, and provided clear error messaging when feed URLs return 404.
+  - `server/calendar.test.js`: Updated unit test assertions for the enhanced 404 feed error message.
+  - `e2e/planned-items.spec.js`: Added E2E tests verifying that past events from previous years are categorized into Overdue (not Today), and verifying mobile viewport rendering without horizontal page overflow.
+- Verification: `npm test` (24/24 passing unit & API tests); `npm run build` (client bundle compiled cleanly in 57ms); `npm run test:e2e` (12/12 Playwright E2E tests passing).
+- Open issues / follow-ups: None.

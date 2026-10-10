@@ -3,3 +3,5 @@ web/dist/
 data/
 .env
 .idea/
+test-results/
+playwright-report/

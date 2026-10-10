@@ -32,6 +32,7 @@ I always know what needs doing and when — and actually doing it feels worthwhi
 - [ ] Data persists in SQLite on the self-hosted backend
 - [ ] Single-user authentication protects the app because it is reachable over the internet
 - [ ] App is self-hosted on Termux (Android) and reachable internet-wide
+- [ ] Planned items & calendar integration: capture one-off tasks with Google Calendar web intent link generation, read-only iCal feed sync/polling, .ics drop import, and dual confirmation lifecycles (Done vs Acknowledge)
 
 ### Out of Scope
 
@@ -41,7 +42,7 @@ I always know what needs doing and when — and actually doing it feels worthwhi
 - Effort/quality ratings on regular chores — completion is intentionally frictionless (tap only)
 - Configurable reward/achievement thresholds in v1 — fixed sensible defaults; configurability deferred
 - "Flat" chore types beyond the three recurrence models (interval, calendar date, flexible window)
-- External calendar sync (Google/Apple Calendar) — not needed for personal use
+- Two-way background OAuth2 calendar write sync (web intent provides instant 1-tap push without credential or token maintenance)
 
 ## Context
 
