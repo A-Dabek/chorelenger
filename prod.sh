@@ -39,7 +39,9 @@ fi
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
   echo "Installing deps (including dev, needed for the build)..."
-  npm ci
+  # --include=dev is explicit: npm skips devDependencies when NODE_ENV=production
+  # (set above), and Vite is a devDependency needed for the build.
+  npm ci --include=dev
 
   echo "Building frontend..."
   npm run build

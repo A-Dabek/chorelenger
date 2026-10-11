@@ -144,3 +144,10 @@ Append-only record of everything that happens in this project. See `AGENTS.md` f
 - Decisions: frontend built on the phone because `web/dist` is gitignored; port 3002 because 3000 = bombos2, 3001 = mem-alice; server still does not read `.env` (only `prod.sh` does).
 - Verification: `bash -n prod.sh` ok; `npm test` 54 pass; `npm run build` ok; `./prod.sh` without env exits 1 with the password error before install. Not run on Termux; Android prebuilds for rolldown/lightningcss not verified on device.
 - Open issues: backup retention not implemented; `npm ci` needs the lockfile to resolve android prebuilds; Cloudflare hostname `chorelenger.bombos.online` to be configured by user.
+
+## 2026-10-11 11:00 — prod.sh: vite not found on device
+- Requested: fix "vite not found" when running `./prod.sh` on the phone.
+- Cause: `prod.sh` exports `NODE_ENV=production` before `npm ci`; npm then omits devDependencies, so Vite (devDependency) was never installed and `npm run build` failed.
+- Changed: `prod.sh` now runs `npm ci --include=dev` with a comment explaining why.
+- Verification: `bash -n prod.sh` ok; `NODE_ENV=production npm ci --dry-run` plans to remove `vite`, `NODE_ENV=production npm ci --include=dev --dry-run` keeps it (up to date).
+- Open issues: a phone-side re-run still needed to confirm the build end to end. Existing `node_modules` on the phone may lack vite; `./prod.sh` reinstalls it.
