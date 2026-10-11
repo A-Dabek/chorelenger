@@ -137,3 +137,10 @@ Append-only record of everything that happens in this project. See `AGENTS.md` f
 - Decisions: upcoming items are not tappable (completing early still needs them in the Today band); week/month bands are not fetched separately; bands hidden when empty to keep the 24-chore fit test valid.
 - Verification: `npm test` 54 pass (new `server/bands.test.js`); `npm run build` ok; `npm run test:e2e` 17 pass (horizon-toggle e2e replaced by a band test).
 - Open issues: service worker cache may need a bump for the new bundle; the chip layout and band density are not checked on a real phone.
+
+## 2026-10-11 10:40 — Termux deploy script (prod.sh)
+- Requested: scripted Termux production deploy modelled on mem-alice/bombos2 `prod.sh`; port 3002; host `chorelenger.bombos.online` (Cloudflare set up manually); no backup retention yet.
+- Changed: new `prod.sh` (executable): sources `.env`, requires `CHORELENGER_PASSWORD_HASH`, `npm ci` + `npm run build` on device (fails if `web/dist/index.html` missing), `npm prune --omit=dev`, DB + WAL/SHM backup to `backup/`, `exec node --experimental-sqlite server/index.js` on `127.0.0.1:3002`. `SKIP_BUILD=1` skips install/build/prune. New `.env.example`; `.gitignore` adds `backup/`; README Deploy section rewritten (build-on-phone, no "no native deps" claim for the build step).
+- Decisions: frontend built on the phone because `web/dist` is gitignored; port 3002 because 3000 = bombos2, 3001 = mem-alice; server still does not read `.env` (only `prod.sh` does).
+- Verification: `bash -n prod.sh` ok; `npm test` 54 pass; `npm run build` ok; `./prod.sh` without env exits 1 with the password error before install. Not run on Termux; Android prebuilds for rolldown/lightningcss not verified on device.
+- Open issues: backup retention not implemented; `npm ci` needs the lockfile to resolve android prebuilds; Cloudflare hostname `chorelenger.bombos.online` to be configured by user.

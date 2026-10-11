@@ -32,28 +32,36 @@ npm run test:e2e          # Playwright E2E tests
 ## Deploy (Termux)
 
 Requires Node >= 22.5 (`pkg install nodejs`). On Node 22.5–22.12 start with `node --experimental-sqlite`.
-There are no native dependencies, so nothing needs compiling on the phone.
+The server has no native dependencies. The frontend build (Vite/rolldown/lightningcss) runs on the phone
+and uses the Android prebuilds from the lockfile.
 
-Build the frontend on WSL (`npm run build`) and copy the repo including `web/dist` to the phone
-(or build on the phone, Vite works there too), then `npm ci --omit=dev` and:
+On the phone, after cloning the repo:
 
 ```sh
-export CHORELENGER_PASSWORD_HASH='...'
-export COOKIE_SECURE=1          # behind HTTPS (Cloudflare Tunnel)
-export PORT=3000 HOST=127.0.0.1
-node server/index.js
+cp .env.example .env            # fill in CHORELENGER_PASSWORD_HASH (see below)
+./prod.sh
 ```
 
-Point the Cloudflare Tunnel at `http://127.0.0.1:3000`. Keep alive with `termux-wake-lock` and
-runit (`pkg install termux-services`) or your existing supervisor. Back up `data/chorelenger.db`.
+`prod.sh` runs `npm ci`, `npm run build` (fails if `web/dist/index.html` is missing), `npm prune --omit=dev`,
+backs up the DB to `backup/chorelenger-YYYYmmdd-HHMM.db`, then starts the server in the foreground on
+`127.0.0.1:3002`. Use `SKIP_BUILD=1 ./prod.sh` to restart without reinstalling or rebuilding.
+Generate the password hash with `npm run hash-password -- '<password>'` (run it after `npm ci`, or on WSL).
+
+Cloudflare Tunnel: map `chorelenger.bombos.online` to `http://127.0.0.1:3002`.
+Port 3000 is bombos2 and 3001 is mem-alice. Keep alive with `termux-wake-lock` and
+runit (`pkg install termux-services`), tmux, or `nohup ./prod.sh > chorelenger.log 2>&1 &`.
+Back up `data/` before deploying a new version.
 
 | Env var | Meaning |
 |---|---|
 | `CHORELENGER_PASSWORD_HASH` | required, from `npm run hash-password` |
 | `CHORELENGER_DB` | DB path (default `data/chorelenger.db`) |
-| `COOKIE_SECURE` | `1` to mark the session cookie Secure (use behind HTTPS) |
-| `PORT`, `HOST` | listen address (default `127.0.0.1:3000`) |
+| `COOKIE_SECURE` | `1` to mark the session cookie Secure (default `1` in `prod.sh`) |
+| `PORT`, `HOST` | listen address (`prod.sh` default `127.0.0.1:3002`; server default `127.0.0.1:3000`) |
 | `TZ` | timezone used to decide what "today" is |
+| `ENV_FILE`, `SKIP_BUILD` | `prod.sh` only: alternate env file; skip install/build/prune |
+
+`.env.example` lists these values. `prod.sh` sources `.env`; the server itself does not read `.env`.
 
 ### Chores: categories and one-offs
 
