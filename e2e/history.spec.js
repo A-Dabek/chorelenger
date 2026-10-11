@@ -52,16 +52,17 @@ test.describe('Executions: horizon and undo', () => {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   };
 
-  test('Today / Week / Month toggle widens the upcoming horizon', async ({ page }) => {
+  test('Today screen shows week and month bands at once; upcoming items are read-only', async ({ page }) => {
     await addChore(page, 'Soon', isoIn(3));
     await addChore(page, 'Later', isoIn(20));
     await page.click('nav button:has-text("Today")');
+    await expect(page.locator('.horizon')).toHaveCount(0);
     await expect(page.locator('.tile')).toHaveCount(0);
-    await page.click('.horizon-btn:has-text("Week")');
-    await expect(page.locator('.tile')).toHaveCount(1);
-    await expect(page.locator('section[data-status="upcoming"] .tile[aria-label="Soon"]')).toBeVisible();
-    await page.click('.horizon-btn:has-text("Month")');
-    await expect(page.locator('.tile')).toHaveCount(2);
+    await expect(page.locator('section[data-band="week"] .chip[data-chore="Soon"]')).toBeVisible();
+    await expect(page.locator('section[data-band="month"] .chip[data-chore="Later"]')).toBeVisible();
+    await expect(page.locator('.chip[data-chore="Soon"]')).toBeVisible();
+    await page.click('.chip[data-chore="Soon"]');
+    await expect(page.locator('.sheet')).toHaveCount(0);
   });
 
   test('done then Undo from History restores the chore as the only active execution', async ({ page }) => {

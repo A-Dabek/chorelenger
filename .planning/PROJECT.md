@@ -29,7 +29,7 @@ I always know what needs doing and when — and actually doing it feels worthwhi
 - [ ] Informational achievements are awarded for patterns (e.g. "cleaned the house 3 months in a row, no skips")
 - [ ] Monthly reward measurement: base reward when execution ≥ 95% for the month; extra reward when extra executions of the monthly goal reach a threshold
 - [ ] The app only measures whether a reward was achieved — real-life rewarding is done by me
-- [ ] Everything to do is an execution (one per chore / calendar event UID / manual item, at most one active per source); Done moves it to history and generates the next; Undo from History restores it; Today shows Today / Week / Month horizons
+- [ ] Everything to do is an execution (one per chore / calendar event UID / manual item, at most one active per source); Done moves it to history and generates the next; Undo from History restores it; one Today screen shows today plus read-only Week and Month bands
 - [ ] Per-chore anchor decides whether the next due date counts from the done date or from the previous due date
 - [ ] Project is a PWA (installable, mobile-first) backed by a Node.js + SQLite API
 - [ ] Data persists in SQLite on the self-hosted backend

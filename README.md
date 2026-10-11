@@ -6,7 +6,7 @@ Personal chore tracker PWA. Fastify + `node:sqlite` backend, Preact + Vite front
 
 Implemented:
 - Single-user password auth (scrypt, session cookie, login throttle).
-- Chores with three recurrence models (interval / flexible window / yearly calendar date), Today dashboard (overdue / due / upcoming), compact icon-grid Today screen (tap tile, confirm in sheet, undo; "Labels" toggle shows names; chore `icon` is an emoji or `img:file.svg` from `web/public/icons/`), monthly history, installable PWA shell.
+- Chores with three recurrence models (interval / flexible window / yearly calendar date), Today dashboard (overdue / due, plus read-only week and month bands), compact icon-grid Today screen (tap tile, confirm in sheet, undo; "Labels" toggle shows names; chore `icon` is an emoji or `img:file.svg` from `web/public/icons/`), monthly history, installable PWA shell.
 - Monthly themed challenges with spotlighted chores, quick-tap extra counter buttons, objective monthly reward measurement (≥95% base execution + extra goal target), and milestone achievements.
 - **Planned Items & Calendar Integration**:
   - One-off task tracking with date, time, location, notes, and 1-tap "Add to Google Calendar" web intent links.
@@ -69,7 +69,7 @@ An *execution* is one concrete to-do with a due date. Every chore has exactly on
 Done moves the execution to History and generates the next one. Undo (History tab, or the toast) restores it and
 replaces the successor; only the latest done execution of a source can be undone (otherwise 409).
 Chores have a *Next due is counted from* setting (`anchor`): `done` (default, done date + interval) or `due`
-(previous due date + interval, strictly periodic). The Today page has a Today / Week / Month horizon toggle.
+(previous due date + interval, strictly periodic). The Today page shows today in full plus read-only "This week" (days 1–7) and "This month" (days 8–31) bands, so upcoming items are always visible on one screen.
 
 API: `GET /api/executions?from=&to=`, `POST /api/executions/:id/done` → `{done, next}`,
 `POST /api/executions/:id/undo` → `{restored}`, `POST|PUT|DELETE /api/executions[/:id]` (manual/calendar rows),

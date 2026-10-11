@@ -9,23 +9,19 @@ import { MotivationView } from './views/Motivation.jsx';
 import { History } from './views/History.jsx';
 import { localToday, addDays } from './lib/dates.js';
 
-const HORIZON_KEY = 'chorelenger.horizon';
-export const HORIZONS = { today: ['Today', 0], week: ['Week', 7], month: ['Month', 31] };
+const HORIZON_DAYS = 31; // Today screen shows today, the next 7 days and the next 31 days
 
 export function App() {
   const [authed, setAuthed] = useState(null);
   const [tab, setTab] = useTabRoute();
   const [chores, setChores] = useState([]);
   const [executions, setExecutions] = useState([]);
-  const [horizon, setHorizon] = useState(() => {
-    try { const h = localStorage.getItem(HORIZON_KEY); return h in HORIZONS ? h : 'today'; } catch { return 'today'; }
-  });
   const [challengeData, setChallengeData] = useState(null);
   const [toast, setToast] = useState(null);
 
   const reload = useCallback(async () => {
     try {
-      const to = addDays(localToday(), HORIZONS[horizon][1]);
+      const to = addDays(localToday(), HORIZON_DAYS);
       const [choresList, chal, execList] = await Promise.all([
         api('GET', '/api/chores'),
         api('GET', '/api/challenge/current'),
@@ -38,13 +34,9 @@ export function App() {
     } catch (e) {
       if (e instanceof AuthError) setAuthed(false);
     }
-  }, [horizon]);
+  }, []);
 
   useEffect(() => { reload(); }, [reload, tab]);
-  const changeHorizon = (h) => {
-    setHorizon(h);
-    try { localStorage.setItem(HORIZON_KEY, h); } catch { /* ignore */ }
-  };
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 6000); return () => clearTimeout(t); }, [toast]);
 
   // One tap = done on an execution (chore, calendar event or one-off). Undo goes through its id.
@@ -83,7 +75,7 @@ export function App() {
   return (
     <>
       <main>
-        {tab === 'today' && <Today executions={executions} horizon={horizon} onHorizon={changeHorizon} challengeData={challengeData} onDone={markDone} onExtra={logExtra} />}
+        {tab === 'today' && <Today executions={executions} challengeData={challengeData} onDone={markDone} onExtra={logExtra} />}
         {tab === 'planned' && <PlannedView onConfirm={markDone} toast={toast} />}
         {tab === 'chores' && <Chores chores={chores} reload={reload} />}
         {tab === 'motivation' && <MotivationView />}

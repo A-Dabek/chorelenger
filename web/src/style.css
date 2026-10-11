@@ -153,4 +153,16 @@ button.cal-item { width:100%; text-align:left; color:inherit; font:inherit; bord
 button.cal-item .info { display:flex; flex-direction:column; flex:1; min-width:0; }
 button.cal-item .cal-ack { font-weight:700; color:var(--accent, #2a7); white-space:nowrap; }
 button.cal-item:disabled { cursor:default; }
-.horizon { display:flex; gap:4px; margin-left:auto; margin-right:8px; } .horizon-btn { padding:6px 10px; font-size:.85rem; min-height:36px; } .horizon-btn.on { background:var(--green); color:#fff; } .history-undo { padding:6px 10px; font-size:.85rem; min-height:36px; }
+.history-undo { padding:6px 10px; font-size:.85rem; min-height:36px; }
+
+/* Week / month glance bands (read-only) */
+.band { margin-top:10px; } .band h2 { font-size:.75rem; margin:0 0 6px; }
+.chip-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(64px,1fr)); gap:4px; }
+.chip { position:relative; min-width:0; min-height:44px; padding:2px 4px; background:var(--card); border:1px solid #0002; border-radius:10px; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:4px; color:var(--muted); cursor:default; }
+.chip.verbose { flex-direction:column; min-height:60px; }
+.chip-day { position:absolute; top:0; left:4px; font-size:.6rem; font-weight:700; color:var(--muted); }
+.chip .chore-emoji { font-size:1.2rem; } .chip .chore-img { width:22px; height:22px; }
+.chip.spotlight { box-shadow:0 0 0 2px #7fe0c4; }
+.chip-name { font-size:.62rem; line-height:1.1; text-align:center; overflow-wrap:anywhere; color:var(--text); }
+.event-row { display:flex; gap:8px; align-items:baseline; font-size:.8rem; color:var(--muted); padding:3px 2px; min-width:0; }
+.event-day { font-weight:700; min-width:3.2em; } .event-name { flex:1; min-width:0; overflow-wrap:anywhere; } .event-time { white-space:nowrap; }
