@@ -43,14 +43,17 @@ on `SpeechRecognizer` directly.
 **Consequence.** Swapping backends is one new implementation plus a container
 change; the UI and ViewModel are untouched.
 
-## 6. Min SDK 26; `EXTRA_PREFER_OFFLINE = true`
+## 6. Min SDK 26; prefer online recognition by default
 
 **Context.** minSdk 26 (Android 8.0) covers essentially all in-use personal
-devices and gives `java.time` and modern Compose support. Offline preference
-avoids surprise network use on a private app.
-**Decision.** `minSdk = 26`; set `EXTRA_PREFER_OFFLINE = true` by default.
-**Consequence.** Simpler code (no desugaring for `java.time`) and offline-first
-behaviour; if accuracy suffers the flag is a one-line change to `false`.
+devices and gives `java.time` and modern Compose support. Forcing
+`EXTRA_PREFER_OFFLINE = true` fails immediately on devices that lack the
+offline language pack (observed on a `en-PL` device).
+**Decision.** `minSdk = 26`; set `EXTRA_PREFER_OFFLINE = false` and use the
+system's default recognizer (not `createOnDeviceSpeechRecognizer`).
+**Consequence.** Recognition works out of the box and may use the network;
+`INTERNET` is already declared. Switching back to offline-only is a one-line
+change once the model is guaranteed to be present.
 
 ## 7. No audio file retained in v1
 

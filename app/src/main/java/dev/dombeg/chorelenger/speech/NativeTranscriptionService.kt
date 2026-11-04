@@ -4,13 +4,13 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -85,20 +85,18 @@ class NativeTranscriptionService(
     }
 
     private fun createRecognizer(): SpeechRecognizer =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)
-        ) {
-            SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
-        } else {
-            SpeechRecognizer.createSpeechRecognizer(appContext)
-        }
+        // Use the system's default recognizer. `createOnDeviceSpeechRecognizer`
+        // fails immediately when no on-device language model is installed.
+        SpeechRecognizer.createSpeechRecognizer(appContext)
 
     private fun buildIntent(): Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
-        putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+        // Forcing offline fails on devices without the offline language pack;
+        // allow the recognizer to use the network when it needs to.
+        putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
     }
 
     private fun hasAudioPermission(): Boolean =
@@ -136,11 +134,17 @@ class NativeTranscriptionService(
     }
 
     override fun onError(error: Int) {
-        emitError(mapSpeechErrorCode(error))
+        val kind = mapSpeechErrorCode(error)
+        Log.w(TAG, "SpeechRecognizer error code=$error -> ${kind.name}")
+        emitError(kind)
     }
 
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
 
     private fun bestResult(bundle: Bundle?): String? =
         bundle?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+
+    private companion object {
+        const val TAG = "ChorelengerSpeech"
+    }
 }

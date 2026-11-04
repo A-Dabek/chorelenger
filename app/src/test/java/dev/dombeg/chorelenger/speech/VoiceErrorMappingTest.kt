@@ -42,6 +42,31 @@ class VoiceErrorMappingTest {
     }
 
     @Test
+    fun mapsServerErrors() {
+        assertEquals(VoiceError.Server, mapSpeechErrorCode(SpeechRecognizer.ERROR_SERVER))
+        assertEquals(
+            VoiceError.Server,
+            mapSpeechErrorCode(SpeechRecognizer.ERROR_SERVER_DISCONNECTED),
+        )
+        assertEquals(
+            VoiceError.Server,
+            mapSpeechErrorCode(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS),
+        )
+    }
+
+    @Test
+    fun mapsLanguageErrors() {
+        assertEquals(
+            VoiceError.Language,
+            mapSpeechErrorCode(SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED),
+        )
+        assertEquals(
+            VoiceError.Language,
+            mapSpeechErrorCode(SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE),
+        )
+    }
+
+    @Test
     fun mapsInsufficientPermissions() {
         assertEquals(
             VoiceError.PermissionDenied,

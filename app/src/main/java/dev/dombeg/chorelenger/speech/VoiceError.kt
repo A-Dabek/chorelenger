@@ -14,6 +14,8 @@ enum class VoiceError {
     Network,
     Audio,
     Client,
+    Server,
+    Language,
     Unknown,
 }
 
@@ -33,6 +35,13 @@ fun mapSpeechErrorCode(code: Int): VoiceError = when (code) {
     SpeechRecognizer.ERROR_AUDIO -> VoiceError.Audio
     SpeechRecognizer.ERROR_CLIENT -> VoiceError.Client
     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> VoiceError.PermissionDenied
+    SpeechRecognizer.ERROR_SERVER,
+    SpeechRecognizer.ERROR_SERVER_DISCONNECTED,
+    SpeechRecognizer.ERROR_TOO_MANY_REQUESTS,
+    -> VoiceError.Server
+    SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE,
+    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED,
+    -> VoiceError.Language
     else -> VoiceError.Unknown
 }
 
@@ -46,5 +55,7 @@ fun VoiceError.defaultMessage(): String = when (this) {
     VoiceError.Network -> "Network error during recognition"
     VoiceError.Audio -> "Audio error - try again"
     VoiceError.Client -> "Recognition was interrupted"
+    VoiceError.Server -> "Speech service error - try again"
+    VoiceError.Language -> "Speech language isn't supported on this device"
     VoiceError.Unknown -> "Something went wrong"
 }
