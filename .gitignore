@@ -6,3 +6,4 @@ captures/
 .cxx/
 .idea/
 .DS_Store
+.forge/
