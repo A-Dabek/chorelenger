@@ -57,6 +57,21 @@ The speech boundary (`TranscriptionService`) is replaced by
 | `./gradlew connectedDebugAndroidTest` | instrumented DAO + e2e (needs a device) |
 | `./gradlew assembleDebug` | build gate |
 
+### Offline caveat (UTP)
+
+`connectedDebugAndroidTest` is driven by AGP's Unified Test Platform (UTP),
+whose runner artifacts may be absent from an offline Gradle cache. When the
+task fails at `_internal-unified-test-platform-...`, either populate the cache
+once with network, or run the same tests through `adb`:
+
+```sh
+scripts/run-android-tests.sh
+```
+
+That script builds/installs both APKs and invokes
+`androidx.test.runner.AndroidJUnitRunner` directly with `adb shell am
+instrument`; it runs the identical instrumented tests, bypassing UTP.
+
 ## Manual smoke checklist (on device)
 
 - [ ] First tap prompts for mic permission.

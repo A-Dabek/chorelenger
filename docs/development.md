@@ -65,4 +65,10 @@ Tests are documented in [testing.md](testing.md):
 ./gradlew connectedDebugAndroidTest          # instrumented e2e (needs a device)
 ```
 
+If the offline cache lacks AGP's UTP runner artifacts, use the UTP-free path:
+
+```sh
+scripts/run-android-tests.sh                 # build + install + adb am instrument
+```
+
 Debug builds only; release signing is deferred.

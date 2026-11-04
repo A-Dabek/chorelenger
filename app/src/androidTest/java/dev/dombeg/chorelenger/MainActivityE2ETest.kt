@@ -1,13 +1,11 @@
 package dev.dombeg.chorelenger
 
-import android.Manifest
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.test.rule.GrantPermissionRule
 import dev.dombeg.chorelenger.speech.VoiceError
 import dev.dombeg.chorelenger.ui.TestTags
 import org.junit.Assert.assertEquals
@@ -25,8 +23,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 class MainActivityE2ETest {
 
     @get:Rule(order = 0)
-    val permissionRule: GrantPermissionRule =
-        GrantPermissionRule.grant(Manifest.permission.RECORD_AUDIO)
+    val permissionRule: GrantAudioPermissionRule = GrantAudioPermissionRule()
 
     @get:Rule(order = 1)
     val containerRule = TestContainerRule()

@@ -95,9 +95,21 @@ dependencies {
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.runner)
-    androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+}
+
+// The dev machine's offline Gradle cache carries these versions. Pin the graph
+// to them so `connectedDebugAndroidTest` resolves with `--offline`.
+configurations.configureEach {
+    resolutionStrategy {
+        force(
+            "androidx.test:monitor:1.7.2",
+            "androidx.test.services:storage:1.5.0",
+            "androidx.test.espresso:espresso-idling-resource:3.6.1",
+            "com.google.code.findbugs:jsr305:3.0.2",
+        )
+    }
 }
