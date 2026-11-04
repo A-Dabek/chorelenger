@@ -93,7 +93,9 @@ class NativeTranscriptionService(
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+        // Language-only ("en"), not the full region tag ("en-PL"): many
+        // recognizers reject region variants they have no model for.
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().language)
         // Forcing offline fails on devices without the offline language pack;
         // allow the recognizer to use the network when it needs to.
         putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
