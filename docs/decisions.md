@@ -50,7 +50,9 @@ devices and gives `java.time` and modern Compose support. Forcing
 `EXTRA_PREFER_OFFLINE = true` fails immediately on devices that lack the
 offline language pack (observed on a `en-PL` device).
 **Decision.** `minSdk = 26`; set `EXTRA_PREFER_OFFLINE = false` and use the
-system's default recognizer (not `createOnDeviceSpeechRecognizer`).
+system's default recognizer (not `createOnDeviceSpeechRecognizer`). The
+recognition language is fixed to Polish (`pl`) in
+`NativeTranscriptionService.RECOGNITION_LANGUAGE`.
 **Consequence.** Recognition works out of the box and may use the network;
 `INTERNET` is already declared. Switching back to offline-only is a one-line
 change once the model is guaranteed to be present.

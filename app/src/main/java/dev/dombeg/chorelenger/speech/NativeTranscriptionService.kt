@@ -15,7 +15,6 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.util.Locale
 
 /**
  * [TranscriptionService] backed by the system [SpeechRecognizer].
@@ -93,9 +92,8 @@ class NativeTranscriptionService(
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-        // Language-only ("en"), not the full region tag ("en-PL"): many
-        // recognizers reject region variants they have no model for.
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().language)
+        // Recognition language is fixed to Polish for v1 (personal app).
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE, RECOGNITION_LANGUAGE)
         // Forcing offline fails on devices without the offline language pack;
         // allow the recognizer to use the network when it needs to.
         putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
@@ -148,5 +146,8 @@ class NativeTranscriptionService(
 
     private companion object {
         const val TAG = "ChorelengerSpeech"
+
+        /** v1 recognizes Polish; change this to support another language. */
+        const val RECOGNITION_LANGUAGE = "pl"
     }
 }
