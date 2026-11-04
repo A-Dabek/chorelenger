@@ -3,10 +3,12 @@
 # Run the instrumented test suite without AGP's Unified Test Platform (UTP).
 #
 # Use this when `./gradlew connectedDebugAndroidTest` cannot resolve UTP's
-# runner artifacts (e.g. a fully offline Gradle cache). It builds and installs
-# both APKs, then invokes the same AndroidJUnitRunner via `adb shell am`.
+# runner artifacts (e.g. a fully offline Gradle cache), or when UTP's install
+# step is confused by duplicate adb connections to the same phone. It builds
+# and installs both APKs, grants the mic permission from the host, then invokes
+# the same AndroidJUnitRunner via `adb shell am`.
 #
-# Requires: a connected, unlocked device visible to `adb devices`.
+# Requires exactly one connected device, or set ANDROID_SERIAL explicitly.
 set -euo pipefail
 
 APP_ID="dev.dombeg.chorelenger"
@@ -25,25 +27,33 @@ if ! command -v "$ADB" >/dev/null 2>&1; then
     fi
 fi
 
-if ! "$ADB" get-state >/dev/null 2>&1; then
-    echo "error: no device. Connect the phone and check 'adb devices'." >&2
+mapfile -t DEVICES < <("$ADB" devices | awk 'NR > 1 && $2 == "device" { print $1 }')
+if [ -n "${ANDROID_SERIAL:-}" ]; then
+    SERIAL="$ANDROID_SERIAL"
+elif [ "${#DEVICES[@]}" -eq 1 ]; then
+    SERIAL="${DEVICES[0]}"
+else
+    echo "error: expected one device, found ${#DEVICES[@]}: ${DEVICES[*]:-none}" >&2
+    echo "hint: 'adb disconnect <duplicate>', or set ANDROID_SERIAL=<serial>" >&2
     exit 1
 fi
+ADB_CMD=("$ADB" -s "$SERIAL")
 
+echo "==> Using device: $SERIAL"
 echo "==> Building test APKs (offline)"
 ./gradlew --offline assembleDebug assembleDebugAndroidTest
 
 echo "==> Installing"
-"$ADB" install -r "$APP_APK"
-"$ADB" install -r "$TEST_APK"
+"${ADB_CMD[@]}" install -r -t "$APP_APK"
+"${ADB_CMD[@]}" install -r -t "$TEST_APK"
 
-# Belt and braces: the tests also grant via UiAutomation, but this guarantees
-# the runtime permission before the Activity composes.
-"$ADB" shell pm grant "$APP_ID" android.permission.RECORD_AUDIO >/dev/null 2>&1 || true
+# Grant from the host so the runtime permission is already in place before the
+# Activity composes; the in-test rule also grants and polls as a backstop.
+"${ADB_CMD[@]}" shell pm grant "$APP_ID" android.permission.RECORD_AUDIO >/dev/null 2>&1 || true
 
 echo "==> Running instrumented tests"
 set +e
-OUTPUT="$("$ADB" shell am instrument -w "$RUNNER" 2>&1)"
+OUTPUT="$("${ADB_CMD[@]}" shell am instrument -w "$RUNNER" 2>&1)"
 STATUS=$?
 set -e
 echo "$OUTPUT"

@@ -74,6 +74,10 @@ That script builds/installs both APKs and invokes
 `androidx.test.runner.AndroidJUnitRunner` directly with `adb shell am
 instrument`; it runs the identical instrumented tests, bypassing UTP.
 
+If the phone appears twice in `adb devices` (e.g. an IP entry and an mDNS
+entry), disconnect the duplicate or pass `ANDROID_SERIAL=<serial>`; otherwise
+installs collide with `INSTALL_FAILED_DUPLICATE_PACKAGE`.
+
 ## Manual smoke checklist (on device)
 
 - [ ] First tap prompts for mic permission.

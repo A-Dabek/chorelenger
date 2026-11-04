@@ -1,6 +1,7 @@
 package dev.dombeg.chorelenger
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.ParcelFileDescriptor
 import androidx.test.platform.app.InstrumentationRegistry
@@ -9,10 +10,10 @@ import org.junit.rules.ExternalResource
 /**
  * Grants RECORD_AUDIO before the Activity launches.
  *
- * `UiAutomation.grantRuntimePermission` fires the shell command without waiting
- * for it, which lets the Activity compose before the grant lands and makes the
- * system permission dialog appear mid-test. Running `pm grant` and draining its
- * output is synchronous; we then poll until the permission is visible.
+ * The recommended `UiAutomation.grantRuntimePermission` is asynchronous, so the
+ * Activity can compose before the grant lands and the system permission dialog
+ * then interrupts a test. Use that API and poll until the permission is
+ * visible; fall back to a synchronous `pm grant` shell command only if needed.
  */
 class GrantAudioPermissionRule : ExternalResource() {
 
@@ -22,22 +23,36 @@ class GrantAudioPermissionRule : ExternalResource() {
         val packageName = context.packageName
         val permission = Manifest.permission.RECORD_AUDIO
 
+        if (isGranted(context, permission)) return
+
+        runCatching {
+            instrumentation.uiAutomation.grantRuntimePermission(packageName, permission)
+        }
+        if (awaitGranted(context, permission, 5_000)) return
+
         val output = runCatching {
             val descriptor = instrumentation.uiAutomation
                 .executeShellCommand("pm grant $packageName $permission")
             ParcelFileDescriptor.AutoCloseInputStream(descriptor)
                 .use { it.readBytes().decodeToString() }
-        }.getOrElse { error("pm grant failed: $it") }
+        }.getOrElse { "shell fallback failed: $it" }
 
-        val deadline = System.currentTimeMillis() + 5_000
-        while (System.currentTimeMillis() < deadline) {
-            if (context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
-                return
-            }
-            Thread.sleep(50)
-        }
+        if (awaitGranted(context, permission, 2_000)) return
+
         throw IllegalStateException(
             "RECORD_AUDIO was not granted to $packageName. pm grant output: $output",
         )
+    }
+
+    private fun isGranted(context: Context, permission: String): Boolean =
+        context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+
+    private fun awaitGranted(context: Context, permission: String, timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (isGranted(context, permission)) return true
+            Thread.sleep(50)
+        }
+        return isGranted(context, permission)
     }
 }
