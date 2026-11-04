@@ -1,6 +1,9 @@
 package dev.dombeg.chorelenger
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import dev.dombeg.chorelenger.data.AppDatabase
 import dev.dombeg.chorelenger.data.NoteDao
 import dev.dombeg.chorelenger.speech.NativeTranscriptionService
@@ -15,4 +18,8 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     override fun noteDao(): NoteDao = database.noteDao()
 
     override fun transcriptionService(): TranscriptionService = transcription
+
+    override fun isAudioPermissionGranted(): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
 }

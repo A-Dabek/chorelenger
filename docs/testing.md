@@ -48,8 +48,9 @@ The speech boundary (`TranscriptionService`) is replaced by
 `MainActivity` reads the container from `ChorelengerApp`. In instrumented tests
 `TestContainerRule` sets a `TestAppContainer` (in-memory Room + fake speech)
 *before* the Activity-launching compose rule runs, via JUnit rule ordering.
-`GrantAudioPermissionRule` runs before both and grants `RECORD_AUDIO` with a
-synchronous `pm grant`, so the system permission dialog never interrupts a test.
+The test container also reports the mic permission as granted, so E2E never
+opens the system permission dialog (some OEM builds forbid programmatic
+grants). The real permission flow is covered by the manual checklist.
 
 ## Commands
 

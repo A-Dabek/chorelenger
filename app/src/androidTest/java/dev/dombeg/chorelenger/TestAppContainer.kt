@@ -19,4 +19,6 @@ class TestAppContainer(context: Context) : AppContainer {
     override fun noteDao(): NoteDao = db.noteDao()
 
     override fun transcriptionService(): TranscriptionService = fakeTranscription
+
+    override fun isAudioPermissionGranted(): Boolean = true
 }

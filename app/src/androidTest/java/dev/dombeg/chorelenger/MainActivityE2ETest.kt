@@ -22,9 +22,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 @RunWith(AndroidJUnit4::class)
 class MainActivityE2ETest {
 
-    @get:Rule(order = 0)
-    val permissionRule: GrantAudioPermissionRule = GrantAudioPermissionRule()
-
     @get:Rule(order = 1)
     val containerRule = TestContainerRule()
 

@@ -1,7 +1,5 @@
 package dev.dombeg.chorelenger.ui
 
-import android.Manifest
-import android.app.Application
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -19,7 +17,6 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.Shadows.shadowOf
 
 /**
  * Integration test: real Compose composables + real ViewModel + real Room.
@@ -36,8 +33,6 @@ class HomeScreenTest {
 
     @Before
     fun setUp() {
-        shadowOf(ApplicationProvider.getApplicationContext<Application>())
-            .grantPermissions(Manifest.permission.RECORD_AUDIO)
         db = Room.inMemoryDatabaseBuilder(
             ApplicationProvider.getApplicationContext(),
             AppDatabase::class.java,
@@ -53,7 +48,9 @@ class HomeScreenTest {
     private fun start(fakeService: FakeTranscriptionService) {
         val viewModel = NotesViewModel(db.noteDao(), fakeService)
         composeRule.setContent {
-            ChorelengerTheme { HomeScreen(viewModel = viewModel) }
+            ChorelengerTheme {
+                HomeScreen(viewModel = viewModel, initialPermissionGranted = true)
+            }
         }
     }
 

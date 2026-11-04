@@ -12,12 +12,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val container = (application as ChorelengerApp).container
+        val permissionGranted = container.isAudioPermissionGranted()
         setContent {
             ChorelengerTheme {
                 val viewModel: NotesViewModel = viewModel {
                     NotesViewModel(container.noteDao(), container.transcriptionService())
                 }
-                HomeScreen(viewModel = viewModel)
+                HomeScreen(
+                    viewModel = viewModel,
+                    initialPermissionGranted = permissionGranted,
+                )
             }
         }
     }

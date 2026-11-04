@@ -47,10 +47,6 @@ echo "==> Installing"
 "${ADB_CMD[@]}" install -r -t "$APP_APK"
 "${ADB_CMD[@]}" install -r -t "$TEST_APK"
 
-# Grant from the host so the runtime permission is already in place before the
-# Activity composes; the in-test rule also grants and polls as a backstop.
-"${ADB_CMD[@]}" shell pm grant "$APP_ID" android.permission.RECORD_AUDIO >/dev/null 2>&1 || true
-
 echo "==> Running instrumented tests"
 set +e
 OUTPUT="$("${ADB_CMD[@]}" shell am instrument -w "$RUNNER" 2>&1)"

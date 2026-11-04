@@ -11,4 +11,11 @@ import dev.dombeg.chorelenger.speech.TranscriptionService
 interface AppContainer {
     fun noteDao(): NoteDao
     fun transcriptionService(): TranscriptionService
+
+    /**
+     * Whether the mic permission is already held. Production reads the real
+     * permission; tests report granted so the E2E path never needs the system
+     * dialog (some devices forbid programmatic grants).
+     */
+    fun isAudioPermissionGranted(): Boolean
 }
