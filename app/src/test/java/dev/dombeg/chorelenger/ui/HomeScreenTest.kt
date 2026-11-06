@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -18,6 +19,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.dombeg.chorelenger.data.AppDatabase
 import dev.dombeg.chorelenger.data.Note
+import dev.dombeg.chorelenger.data.RecurrenceMode
+import dev.dombeg.chorelenger.data.RecurrenceUnit
 import dev.dombeg.chorelenger.reminders.FakeReminderNotifier
 import dev.dombeg.chorelenger.reminders.FakeReminderScheduler
 import dev.dombeg.chorelenger.reminders.HOUR_MILLIS
@@ -27,6 +30,7 @@ import dev.dombeg.chorelenger.ui.theme.ChorelengerTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -92,9 +96,40 @@ class HomeScreenTest {
         }
     }
 
+    private fun waitForTag(tag: String) {
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun waitForTagGone(tag: String) {
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty()
+        }
+    }
+
     private fun insertNote(text: String, reminderAt: Long? = null): Long = runBlocking {
         db.noteDao().insert(
             Note(text = text, createdAt = 1L, reminderAt = reminderAt),
+        )
+    }
+
+    private fun insertPeriodicNote(
+        text: String,
+        due: Long,
+        unit: RecurrenceUnit = RecurrenceUnit.WEEKS,
+        count: Int = 2,
+        mode: RecurrenceMode = RecurrenceMode.ABSOLUTE,
+    ): Long = runBlocking {
+        db.noteDao().insert(
+            Note(
+                text = text,
+                createdAt = 1L,
+                reminderAt = due,
+                recurrenceUnit = unit,
+                recurrenceCount = count,
+                recurrenceMode = mode,
+            ),
         )
     }
 
@@ -102,10 +137,41 @@ class HomeScreenTest {
         composeRule.onNodeWithTag(TestTags.NoteRow).performTouchInput {
             swipeRight(startX = width * 0.1f, endX = width * 0.9f)
         }
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithTag(TestTags.ReminderScreen)
-                .fetchSemanticsNodes().isNotEmpty()
+        waitForTag(TestTags.ReminderScreen)
+    }
+
+    /** Chooses the One-time card and lands on the hours editor. */
+    private fun chooseOneTime() {
+        composeRule.onNodeWithTag(TestTags.ReminderOneTimeOption).performClick()
+        composeRule.waitForIdle()
+        if (composeRule.onAllNodesWithTag(TestTags.ReminderHoursField)
+                .fetchSemanticsNodes().isEmpty()
+        ) {
+            composeRule.onNodeWithTag(TestTags.ReminderNextButton).performClick()
         }
+        waitForTag(TestTags.ReminderHoursField)
+    }
+
+    /** Chooses the Periodic card and lands on the first-execution step. */
+    private fun choosePeriodic() {
+        composeRule.onNodeWithTag(TestTags.ReminderPeriodicOption).performClick()
+        composeRule.waitForIdle()
+        if (composeRule.onAllNodesWithTag(TestTags.ReminderFirstStep)
+                .fetchSemanticsNodes().isEmpty()
+        ) {
+            composeRule.onNodeWithTag(TestTags.ReminderNextButton).performClick()
+        }
+        waitForTag(TestTags.ReminderFirstStep)
+    }
+
+    private fun firstStepNext() {
+        composeRule.onNodeWithTag(TestTags.ReminderNextButton).performClick()
+        waitForTag(TestTags.ReminderIntervalStep)
+    }
+
+    private fun intervalStepNext() {
+        composeRule.onNodeWithTag(TestTags.ReminderNextButton).performClick()
+        waitForTag(TestTags.ReminderModeStep)
     }
 
     @Test
@@ -173,12 +239,31 @@ class HomeScreenTest {
     }
 
     @Test
-    fun swipeRightOpensEditorWithDefaultHours() {
+    fun notesTabHasMicrophoneAndRepeatsTabDoesNot() {
+        start(fake)
+
+        composeRule.onNodeWithTag(TestTags.RecordButton).assertIsDisplayed()
+
+        composeRule.onNodeWithTag(TestTags.RepeatsTab).performClick()
+
+        composeRule.onNodeWithTag(TestTags.RecordButton).assertDoesNotExist()
+        composeRule.onNodeWithTag(TestTags.PeriodicEmptyState).assertIsDisplayed()
+
+        composeRule.onNodeWithTag(TestTags.NotesTab).performClick()
+
+        composeRule.onNodeWithTag(TestTags.RecordButton).assertIsDisplayed()
+    }
+
+    @Test
+    fun swipeRightOpensTypeStepThenDefaultHours() {
         insertNote("walk the dog")
         start(fake)
         waitForText("walk the dog")
 
         openReminderEditor()
+
+        composeRule.onNodeWithTag(TestTags.ReminderTypeStep).assertIsDisplayed()
+        chooseOneTime()
 
         composeRule.onNodeWithTag(TestTags.ReminderScreen).assertIsDisplayed()
         composeRule.onNodeWithTag(TestTags.ReminderHoursField).assertTextContains("24")
@@ -190,15 +275,13 @@ class HomeScreenTest {
         start(fake)
         waitForText("walk the dog")
         openReminderEditor()
+        chooseOneTime()
 
         composeRule.onNodeWithTag(TestTags.ReminderHoursField).performTextClearance()
         composeRule.onNodeWithTag(TestTags.ReminderHoursField).performTextInput("2")
         composeRule.onNodeWithTag(TestTags.ReminderConfirmButton).performClick()
 
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithTag(TestTags.ReminderBadge)
-                .fetchSemanticsNodes().isNotEmpty()
-        }
+        waitForTag(TestTags.ReminderBadge)
         composeRule.onNodeWithTag(TestTags.ReminderScreen).assertDoesNotExist()
 
         val expected = nowMillis + 2L * HOUR_MILLIS
@@ -216,10 +299,7 @@ class HomeScreenTest {
 
         composeRule.onNodeWithTag(TestTags.ReminderCancelButton).performClick()
 
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithTag(TestTags.ReminderScreen)
-                .fetchSemanticsNodes().isEmpty()
-        }
+        waitForTagGone(TestTags.ReminderScreen)
         assertNull(runBlocking { db.noteDao().getById(id)!!.reminderAt })
     }
 
@@ -229,15 +309,13 @@ class HomeScreenTest {
         start(fake)
         waitForText("walk the dog")
         openReminderEditor()
+        chooseOneTime()
 
         composeRule.onNodeWithTag(TestTags.ReminderHoursField).assertTextContains("6")
         composeRule.onNodeWithTag(TestTags.ReminderRemoveButton).assertIsDisplayed()
         composeRule.onNodeWithTag(TestTags.ReminderRemoveButton).performClick()
 
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithTag(TestTags.ReminderScreen)
-                .fetchSemanticsNodes().isEmpty()
-        }
+        waitForTagGone(TestTags.ReminderScreen)
         composeRule.waitForIdle()
         assertNull(runBlocking { db.noteDao().getById(id)!!.reminderAt })
         assertEquals("walk the dog", runBlocking { db.noteDao().getById(id)!!.text })
@@ -268,6 +346,7 @@ class HomeScreenTest {
         start(fake)
         waitForText("walk the dog")
         openReminderEditor()
+        chooseOneTime()
 
         composeRule.onNodeWithTag(TestTags.ReminderHoursField).performTextClearance()
         composeRule.onNodeWithTag(TestTags.ReminderConfirmButton).assertIsNotEnabled()
@@ -279,5 +358,130 @@ class HomeScreenTest {
         composeRule.onNodeWithTag(TestTags.ReminderHoursField).performTextClearance()
         composeRule.onNodeWithTag(TestTags.ReminderHoursField).performTextInput("abc")
         composeRule.onNodeWithTag(TestTags.ReminderConfirmButton).assertIsNotEnabled()
+    }
+
+    @Test
+    fun createPeriodicMovesNoteToRepeatsAndSchedulesFirstDue() {
+        val id = insertNote("walk the dog")
+        start(fake)
+        waitForText("walk the dog")
+        openReminderEditor()
+        choosePeriodic()
+        firstStepNext()
+
+        composeRule.onNodeWithTag(TestTags.ReminderIntervalCountField).performTextClearance()
+        composeRule.onNodeWithTag(TestTags.ReminderIntervalCountField).performTextInput("2")
+        composeRule.onNodeWithTag(TestTags.ReminderUnitDays).performClick()
+        intervalStepNext()
+
+        composeRule.onNodeWithTag(TestTags.ReminderModeAbsolute).performClick()
+        composeRule.onNodeWithTag(TestTags.ReminderConfirmButton).performClick()
+
+        waitForTagGone(TestTags.ReminderScreen)
+        composeRule.waitUntil(5_000) {
+            runBlocking { db.noteDao().getById(id)?.recurrenceUnit } == RecurrenceUnit.DAYS
+        }
+        composeRule.onNodeWithTag(TestTags.EmptyState).assertIsDisplayed()
+
+        composeRule.onNodeWithTag(TestTags.RepeatsTab).performClick()
+        waitForText("walk the dog")
+
+        composeRule.onNodeWithTag(TestTags.RecurrenceBadge).assertTextContains("Every 2 days")
+        val note = runBlocking { db.noteDao().getById(id)!! }
+        assertEquals(2, note.recurrenceCount)
+        assertEquals(RecurrenceMode.ABSOLUTE, note.recurrenceMode)
+        assertNotNull(scheduler.scheduled[id])
+    }
+
+    @Test
+    fun switchPeriodicToOneTimeReturnsNoteToNotes() {
+        val id = insertPeriodicNote("water plants", nowMillis + 5L * HOUR_MILLIS)
+        start(fake)
+        composeRule.onNodeWithTag(TestTags.RepeatsTab).performClick()
+        waitForText("water plants")
+
+        openReminderEditor()
+        composeRule.onNodeWithTag(TestTags.ReminderTypeStep).assertIsDisplayed()
+        composeRule.onNodeWithTag(TestTags.ReminderOneTimeOption).performClick()
+        composeRule.onNodeWithTag(TestTags.ReminderNextButton).performClick()
+        waitForTag(TestTags.ReminderHoursField)
+        composeRule.onNodeWithTag(TestTags.ReminderConfirmButton).performClick()
+
+        waitForTagGone(TestTags.ReminderScreen)
+        composeRule.waitUntil(5_000) {
+            runBlocking { db.noteDao().getById(id)?.recurrenceUnit } == null
+        }
+
+        composeRule.onNodeWithTag(TestTags.NotesTab).performClick()
+        waitForText("water plants")
+        assertNull(runBlocking { db.noteDao().getById(id)!!.recurrenceUnit })
+    }
+
+    @Test
+    fun switchOneTimeToPeriodicMovesNoteToRepeats() {
+        val id = insertNote("walk the dog", reminderAt = nowMillis + 5L * HOUR_MILLIS)
+        start(fake)
+        waitForText("walk the dog")
+
+        openReminderEditor()
+        choosePeriodic()
+        firstStepNext()
+        intervalStepNext()
+        composeRule.onNodeWithTag(TestTags.ReminderModeRelative).performClick()
+        composeRule.onNodeWithTag(TestTags.ReminderConfirmButton).performClick()
+
+        waitForTagGone(TestTags.ReminderScreen)
+        composeRule.waitUntil(5_000) {
+            runBlocking { db.noteDao().getById(id)?.recurrenceMode } == RecurrenceMode.RELATIVE
+        }
+
+        composeRule.onNodeWithTag(TestTags.RepeatsTab).performClick()
+        waitForText("walk the dog")
+        composeRule.onNodeWithTag(TestTags.RecurrenceBadge).assertTextContains("1 day after done")
+    }
+
+    @Test
+    fun removeRepeatReturnsPeriodicNoteToOrdinaryNotes() {
+        val id = insertPeriodicNote("water plants", nowMillis + 5L * HOUR_MILLIS)
+        start(fake)
+        composeRule.onNodeWithTag(TestTags.RepeatsTab).performClick()
+        waitForText("water plants")
+
+        openReminderEditor()
+        composeRule.onNodeWithTag(TestTags.ReminderNextButton).performClick()
+        waitForTag(TestTags.ReminderFirstStep)
+        firstStepNext()
+        intervalStepNext()
+        waitForTag(TestTags.ReminderRemoveButton)
+        composeRule.onNodeWithTag(TestTags.ReminderRemoveButton).performScrollTo().performClick()
+
+        waitForTagGone(TestTags.ReminderScreen)
+        composeRule.waitUntil(5_000) {
+            runBlocking { db.noteDao().getById(id)?.reminderAt } == null
+        }
+
+        composeRule.onNodeWithTag(TestTags.NotesTab).performClick()
+        waitForText("water plants")
+        assertNull(runBlocking { db.noteDao().getById(id)!!.recurrenceUnit })
+    }
+
+    @Test
+    fun invalidIntervalCountDisablesNext() {
+        insertNote("walk the dog")
+        start(fake)
+        waitForText("walk the dog")
+        openReminderEditor()
+        choosePeriodic()
+        firstStepNext()
+
+        composeRule.onNodeWithTag(TestTags.ReminderIntervalCountField).performTextClearance()
+        composeRule.onNodeWithTag(TestTags.ReminderNextButton).assertIsNotEnabled()
+
+        composeRule.onNodeWithTag(TestTags.ReminderIntervalCountField).performTextInput("0")
+        composeRule.onNodeWithTag(TestTags.ReminderNextButton).assertIsNotEnabled()
+
+        composeRule.onNodeWithTag(TestTags.ReminderIntervalCountField).performTextClearance()
+        composeRule.onNodeWithTag(TestTags.ReminderIntervalCountField).performTextInput("366")
+        composeRule.onNodeWithTag(TestTags.ReminderNextButton).assertIsNotEnabled()
     }
 }

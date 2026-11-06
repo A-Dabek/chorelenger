@@ -8,9 +8,12 @@ import dev.dombeg.chorelenger.MainDispatcherRule
 import dev.dombeg.chorelenger.data.AppDatabase
 import dev.dombeg.chorelenger.data.Note
 import dev.dombeg.chorelenger.data.NoteDao
+import dev.dombeg.chorelenger.data.RecurrenceMode
+import dev.dombeg.chorelenger.data.RecurrenceUnit
 import dev.dombeg.chorelenger.reminders.FakeReminderNotifier
 import dev.dombeg.chorelenger.reminders.FakeReminderScheduler
 import dev.dombeg.chorelenger.reminders.HOUR_MILLIS
+import dev.dombeg.chorelenger.reminders.RecurrenceSpec
 import dev.dombeg.chorelenger.reminders.ReminderActions
 import dev.dombeg.chorelenger.speech.FakeTranscriptionService
 import dev.dombeg.chorelenger.speech.VoiceError
@@ -22,6 +25,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -192,6 +196,7 @@ class NotesViewModelTest {
         assertEquals(id, draft.noteId)
         assertEquals(24, draft.initialHours)
         assertFalse(draft.hasReminder)
+        assertFalse(draft.isPeriodic)
     }
 
     @Test
@@ -213,18 +218,130 @@ class NotesViewModelTest {
     }
 
     @Test
-    fun confirmPersistsSchedulesAndClosesDraft() = runTest {
+    fun editPeriodicNoteExposesItsRecurrence() = runTest {
+        val id = dao.insert(
+            Note(
+                text = "water plants",
+                createdAt = 1L,
+                reminderAt = nowMillis + HOUR_MILLIS,
+                recurrenceUnit = RecurrenceUnit.WEEKS,
+                recurrenceCount = 2,
+                recurrenceMode = RecurrenceMode.RELATIVE,
+            ),
+        )
+        val vm = viewModel()
+
+        vm.onEditReminder(dao.getById(id)!!)
+
+        val draft = vm.reminderDraft.value!!
+        assertTrue(draft.hasReminder)
+        assertTrue(draft.isPeriodic)
+        assertEquals(
+            RecurrenceSpec(RecurrenceUnit.WEEKS, 2, RecurrenceMode.RELATIVE),
+            draft.existingRecurrence,
+        )
+    }
+
+    @Test
+    fun confirmOneTimePersistsSchedulesAndClosesDraft() = runTest {
         val id = dao.insert(Note(text = "water plants", createdAt = 1L))
         val vm = viewModel()
         vm.onEditReminder(dao.getById(id)!!)
 
-        vm.onConfirmReminder(2)
+        vm.onConfirmReminder(ReminderSelection.OneTime(2))
         advanceUntilIdle()
 
         val expected = nowMillis + 2L * HOUR_MILLIS
         assertEquals(expected, dao.getById(id)!!.reminderAt)
+        assertNull(dao.getById(id)!!.recurrenceUnit)
         assertEquals(expected, scheduler.scheduled[id])
         assertEquals(null, vm.reminderDraft.value)
+    }
+
+    @Test
+    fun confirmPeriodicPersistsAndMovesToRepeats() = runTest {
+        val id = dao.insert(Note(text = "water plants", createdAt = 1L))
+        val vm = viewModel()
+        vm.onEditReminder(dao.getById(id)!!)
+        val firstAt = nowMillis + 2L * HOUR_MILLIS
+
+        vm.onConfirmReminder(
+            ReminderSelection.Periodic(firstAt, RecurrenceUnit.MONTHS, 2, RecurrenceMode.ABSOLUTE),
+        )
+        advanceUntilIdle()
+
+        val note = dao.getById(id)!!
+        assertEquals(firstAt, note.reminderAt)
+        assertEquals(RecurrenceUnit.MONTHS, note.recurrenceUnit)
+        assertEquals(2, note.recurrenceCount)
+        assertEquals(RecurrenceMode.ABSOLUTE, note.recurrenceMode)
+        assertEquals(firstAt, scheduler.scheduled[id])
+        assertEquals(null, vm.reminderDraft.value)
+        assertEquals(emptyList<Any>(), dao.observeActive().first())
+        assertEquals(listOf(id), dao.observePeriodic().first().map { it.id })
+    }
+
+    @Test
+    fun confirmPeriodicRejectsPastFirstExecution() = runTest {
+        val id = dao.insert(Note(text = "water plants", createdAt = 1L))
+        val vm = viewModel()
+        vm.onEditReminder(dao.getById(id)!!)
+
+        vm.onConfirmReminder(
+            ReminderSelection.Periodic(nowMillis, RecurrenceUnit.DAYS, 1, RecurrenceMode.ABSOLUTE),
+        )
+        advanceUntilIdle()
+
+        assertNull(dao.getById(id)!!.reminderAt)
+        assertNull(dao.getById(id)!!.recurrenceUnit)
+        assertTrue(vm.reminderDraft.value != null)
+    }
+
+    @Test
+    fun confirmPeriodicRejectsOutOfRangeCount() = runTest {
+        val id = dao.insert(Note(text = "water plants", createdAt = 1L))
+        val vm = viewModel()
+        vm.onEditReminder(dao.getById(id)!!)
+
+        vm.onConfirmReminder(
+            ReminderSelection.Periodic(
+                nowMillis + HOUR_MILLIS,
+                RecurrenceUnit.MONTHS,
+                25,
+                RecurrenceMode.ABSOLUTE,
+            ),
+        )
+        advanceUntilIdle()
+
+        assertNull(dao.getById(id)!!.reminderAt)
+        assertNull(dao.getById(id)!!.recurrenceUnit)
+        assertTrue(vm.reminderDraft.value != null)
+    }
+
+    @Test
+    fun switchingPeriodicToOneTimeClearsRecurrence() = runTest {
+        val id = dao.insert(
+            Note(
+                text = "water plants",
+                createdAt = 1L,
+                reminderAt = nowMillis + HOUR_MILLIS,
+                recurrenceUnit = RecurrenceUnit.DAYS,
+                recurrenceCount = 2,
+                recurrenceMode = RecurrenceMode.ABSOLUTE,
+            ),
+        )
+        val vm = viewModel()
+        vm.onEditReminder(dao.getById(id)!!)
+
+        vm.onConfirmReminder(ReminderSelection.OneTime(1))
+        advanceUntilIdle()
+
+        val note = dao.getById(id)!!
+        assertEquals(nowMillis + HOUR_MILLIS, note.reminderAt)
+        assertNull(note.recurrenceUnit)
+        assertNull(note.recurrenceCount)
+        assertNull(note.recurrenceMode)
+        assertEquals(emptyList<Any>(), dao.observePeriodic().first())
     }
 
     @Test
@@ -261,6 +378,33 @@ class NotesViewModelTest {
         assertTrue(scheduler.cancels.contains(id))
         assertTrue(notifier.cancels.contains(id))
         assertEquals(null, vm.reminderDraft.value)
+    }
+
+    @Test
+    fun removePeriodicClearsRecurrenceAndReturnsToActiveList() = runTest {
+        val id = dao.insert(
+            Note(
+                text = "water plants",
+                createdAt = 1L,
+                reminderAt = nowMillis + HOUR_MILLIS,
+                recurrenceUnit = RecurrenceUnit.WEEKS,
+                recurrenceCount = 1,
+                recurrenceMode = RecurrenceMode.ABSOLUTE,
+            ),
+        )
+        val vm = viewModel()
+        vm.onEditReminder(dao.getById(id)!!)
+
+        vm.onRemoveReminder(id)
+        advanceUntilIdle()
+
+        val note = dao.getById(id)!!
+        assertNull(note.reminderAt)
+        assertNull(note.recurrenceUnit)
+        assertNull(note.recurrenceCount)
+        assertNull(note.recurrenceMode)
+        assertEquals(listOf(id), dao.observeActive().first().map { it.id })
+        assertEquals(emptyList<Any>(), dao.observePeriodic().first())
     }
 
     @Test

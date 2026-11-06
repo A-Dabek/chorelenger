@@ -18,6 +18,8 @@ import dev.dombeg.chorelenger.reminders.HOUR_MILLIS
 import dev.dombeg.chorelenger.reminders.ReminderActionReceiver
 import dev.dombeg.chorelenger.reminders.ReminderAlarmReceiver
 import dev.dombeg.chorelenger.reminders.ReminderIntents
+import dev.dombeg.chorelenger.data.RecurrenceMode
+import dev.dombeg.chorelenger.data.RecurrenceUnit
 import dev.dombeg.chorelenger.speech.VoiceError
 import dev.dombeg.chorelenger.ui.TestTags
 import kotlinx.coroutines.flow.first
@@ -68,6 +70,22 @@ class MainActivityE2ETest {
         }
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag(TestTags.ReminderScreen)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun chooseOneTime() {
+        composeRule.onNodeWithTag(TestTags.ReminderOneTimeOption).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(TestTags.ReminderHoursField)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun choosePeriodic() {
+        composeRule.onNodeWithTag(TestTags.ReminderPeriodicOption).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(TestTags.ReminderFirstStep)
                 .fetchSemanticsNodes().isNotEmpty()
         }
     }
@@ -168,6 +186,7 @@ class MainActivityE2ETest {
         val id = noteId("walk the dog")
         val before = System.currentTimeMillis()
         openReminderEditor()
+        chooseOneTime()
 
         composeRule.onNodeWithTag(TestTags.ReminderHoursField).performTextClearance()
         composeRule.onNodeWithTag(TestTags.ReminderHoursField).performTextInput("2")
@@ -191,6 +210,7 @@ class MainActivityE2ETest {
         recordNote("persist reminder")
         val id = noteId("persist reminder")
         openReminderEditor()
+        chooseOneTime()
         composeRule.onNodeWithTag(TestTags.ReminderConfirmButton).performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag(TestTags.ReminderBadge)
@@ -212,7 +232,7 @@ class MainActivityE2ETest {
         recordNote("alarm note")
         val id = noteId("alarm note")
         runBlocking {
-            containerRule.container.db.noteDao().setReminder(id, System.currentTimeMillis() - 1_000L)
+            containerRule.container.db.noteDao().setOneTimeReminder(id, System.currentTimeMillis() - 1_000L)
         }
 
         sendAlarm(id)
@@ -230,7 +250,7 @@ class MainActivityE2ETest {
         recordNote("done note")
         val id = noteId("done note")
         runBlocking {
-            containerRule.container.db.noteDao().setReminder(id, System.currentTimeMillis() - 1_000L)
+            containerRule.container.db.noteDao().setOneTimeReminder(id, System.currentTimeMillis() - 1_000L)
         }
 
         sendAction(id, ReminderIntents.ACTION_REMINDER_DONE)
@@ -248,7 +268,7 @@ class MainActivityE2ETest {
         recordNote("snooze note")
         val id = noteId("snooze note")
         runBlocking {
-            containerRule.container.db.noteDao().setReminder(id, System.currentTimeMillis() - 1_000L)
+            containerRule.container.db.noteDao().setOneTimeReminder(id, System.currentTimeMillis() - 1_000L)
         }
         val before = System.currentTimeMillis()
 
@@ -263,5 +283,95 @@ class MainActivityE2ETest {
         assertNotNull(note)
         assertTrue(note!!.reminderAt!! >= before + 24L * HOUR_MILLIS)
         composeRule.onNodeWithText("snooze note").assertIsDisplayed()
+    }
+
+    @Test
+    fun createPeriodicMovesToRepeatsAndSurvivesRecreation() {
+        recordNote("water plants")
+        openReminderEditor()
+        choosePeriodic()
+
+        composeRule.onNodeWithTag(TestTags.ReminderNextButton).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(TestTags.ReminderIntervalStep)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag(TestTags.ReminderIntervalCountField).performTextClearance()
+        composeRule.onNodeWithTag(TestTags.ReminderIntervalCountField).performTextInput("2")
+        composeRule.onNodeWithTag(TestTags.ReminderUnitWeeks).performClick()
+        composeRule.onNodeWithTag(TestTags.ReminderNextButton).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(TestTags.ReminderModeStep)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag(TestTags.ReminderModeAbsolute).performClick()
+        composeRule.onNodeWithTag(TestTags.ReminderConfirmButton).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(TestTags.ReminderScreen)
+                .fetchSemanticsNodes().isEmpty()
+        }
+
+        composeRule.onNodeWithTag(TestTags.RepeatsTab).performClick()
+        waitForText("water plants")
+        composeRule.onNodeWithTag(TestTags.RecurrenceBadge).assertIsDisplayed()
+
+        composeRule.activityRule.scenario.recreate()
+
+        waitForText("water plants")
+        composeRule.onNodeWithText("water plants").assertIsDisplayed()
+    }
+
+    @Test
+    fun periodicDoneKeepsItemAndAdvancesDue() {
+        recordNote("repeat done")
+        val id = noteId("repeat done")
+        runBlocking {
+            containerRule.container.db.noteDao().setPeriodicReminder(
+                id,
+                System.currentTimeMillis() - 1_000L,
+                RecurrenceUnit.DAYS,
+                2,
+                RecurrenceMode.ABSOLUTE,
+            )
+        }
+
+        sendAction(id, ReminderIntents.ACTION_REMINDER_DONE)
+
+        composeRule.waitUntil(5_000) {
+            val note = runBlocking { containerRule.container.db.noteDao().getById(id) }
+            note?.reminderAt != null && note.reminderAt!! > System.currentTimeMillis()
+        }
+        val note = runBlocking { containerRule.container.db.noteDao().getById(id) }
+        assertNotNull(note)
+        assertEquals(RecurrenceUnit.DAYS, note!!.recurrenceUnit)
+        assertEquals(2, note.recurrenceCount)
+    }
+
+    @Test
+    fun periodicSnoozeKeepsRecurrenceAndMovesDue() {
+        recordNote("repeat snooze")
+        val id = noteId("repeat snooze")
+        runBlocking {
+            containerRule.container.db.noteDao().setPeriodicReminder(
+                id,
+                System.currentTimeMillis() - 1_000L,
+                RecurrenceUnit.WEEKS,
+                1,
+                RecurrenceMode.RELATIVE,
+            )
+        }
+        val before = System.currentTimeMillis()
+
+        sendAction(id, ReminderIntents.ACTION_REMINDER_SNOOZE)
+
+        composeRule.waitUntil(5_000) {
+            containerRule.container.fakeScheduler.scheduled[id]?.let {
+                it >= before + 24L * HOUR_MILLIS
+            } ?: false
+        }
+        val note = runBlocking { containerRule.container.db.noteDao().getById(id) }
+        assertNotNull(note)
+        assertEquals(RecurrenceUnit.WEEKS, note!!.recurrenceUnit)
+        assertEquals(RecurrenceMode.RELATIVE, note.recurrenceMode)
     }
 }

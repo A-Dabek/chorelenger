@@ -62,4 +62,27 @@ class NoteDaoInstrumentedTest {
         assertEquals(null, dao.getById(id)!!.reminderAt)
         assertEquals(listOf("reminder", "ordinary"), dao.observeAll().first().map { it.text })
     }
+
+    @Test
+    fun recurrenceColumnsRoundTrip() = runTest {
+        val id = dao.insert(Note(text = "repeat", createdAt = 100L))
+
+        dao.setPeriodicReminder(id, 5_000L, RecurrenceUnit.MONTHS, 3, RecurrenceMode.RELATIVE)
+
+        val note = dao.getById(id)!!
+        assertEquals(5_000L, note.reminderAt)
+        assertEquals(RecurrenceUnit.MONTHS, note.recurrenceUnit)
+        assertEquals(3, note.recurrenceCount)
+        assertEquals(RecurrenceMode.RELATIVE, note.recurrenceMode)
+        assertEquals(listOf("repeat"), dao.observePeriodic().first().map { it.text })
+        assertEquals(emptyList<Note>(), dao.observeActive().first())
+
+        dao.setOneTimeReminder(id, 6_000L)
+
+        val oneTime = dao.getById(id)!!
+        assertEquals(null, oneTime.recurrenceUnit)
+        assertEquals(null, oneTime.recurrenceCount)
+        assertEquals(null, oneTime.recurrenceMode)
+        assertEquals(listOf("repeat"), dao.observeActive().first().map { it.text })
+    }
 }
