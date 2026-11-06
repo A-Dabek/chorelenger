@@ -43,4 +43,23 @@ class NoteDaoInstrumentedTest {
         dao.deleteById(id)
         assertEquals(listOf("first"), dao.observeAll().first().map { it.text })
     }
+
+    @Test
+    fun reminderColumnsRoundTripAndSortFirst() = runTest {
+        dao.insert(Note(text = "ordinary", createdAt = 100L))
+        val id = dao.insert(
+            Note(text = "reminder", createdAt = 200L, reminderAt = 5_000L),
+        )
+
+        dao.markReminderNotified(id, 6_000L)
+
+        val note = dao.getById(id)!!
+        assertEquals(5_000L, note.reminderAt)
+        assertEquals(6_000L, note.reminderNotifiedAt)
+        assertEquals(listOf("reminder", "ordinary"), dao.observeAll().first().map { it.text })
+
+        dao.clearReminder(id)
+        assertEquals(null, dao.getById(id)!!.reminderAt)
+        assertEquals(listOf("reminder", "ordinary"), dao.observeAll().first().map { it.text })
+    }
 }
