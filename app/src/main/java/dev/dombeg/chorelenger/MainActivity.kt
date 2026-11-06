@@ -13,14 +13,20 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val container = (application as ChorelengerApp).container
         val permissionGranted = container.isAudioPermissionGranted()
+        val notificationPermissionGranted = container.isNotificationPermissionGranted()
         setContent {
             ChorelengerTheme {
                 val viewModel: NotesViewModel = viewModel {
-                    NotesViewModel(container.noteDao(), container.transcriptionService())
+                    NotesViewModel(
+                        noteDao = container.noteDao(),
+                        transcription = container.transcriptionService(),
+                        reminderActions = container.reminderActions(),
+                    )
                 }
                 HomeScreen(
                     viewModel = viewModel,
                     initialPermissionGranted = permissionGranted,
+                    initialNotificationPermissionGranted = notificationPermissionGranted,
                 )
             }
         }

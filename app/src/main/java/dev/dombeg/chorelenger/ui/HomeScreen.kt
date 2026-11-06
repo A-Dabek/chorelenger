@@ -1,6 +1,7 @@
 package dev.dombeg.chorelenger.ui
 
 import android.Manifest
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.RepeatMode
@@ -51,10 +52,12 @@ import dev.dombeg.chorelenger.speech.VoiceState
 fun HomeScreen(
     viewModel: NotesViewModel,
     initialPermissionGranted: Boolean,
+    initialNotificationPermissionGranted: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val notes by viewModel.notes.collectAsStateWithLifecycle()
     val voiceState by viewModel.voiceState.collectAsStateWithLifecycle()
+    val reminderDraft by viewModel.reminderDraft.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     var hasPermission by remember { mutableStateOf(initialPermissionGranted) }
@@ -66,6 +69,49 @@ fun HomeScreen(
         hasPermission = granted
         permissionDenied = !granted
         if (granted) viewModel.onRecordButtonTap()
+    }
+
+    var notificationPermissionGranted by remember {
+        mutableStateOf(initialNotificationPermissionGranted)
+    }
+    var pendingReminderHours by remember { mutableStateOf<Int?>(null) }
+    var notificationsOff by remember { mutableStateOf(false) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        notificationPermissionGranted = granted
+        val hours = pendingReminderHours
+        pendingReminderHours = null
+        if (hours != null) {
+            // Save regardless of the permission result.
+            viewModel.onConfirmReminder(hours)
+            notificationsOff = !granted
+        }
+    }
+
+    val draft = reminderDraft
+    if (draft != null) {
+        ReminderScreen(
+            draft = draft,
+            nowMillis = viewModel.currentTimeMillis(),
+            onConfirm = { hours ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    !notificationPermissionGranted
+                ) {
+                    pendingReminderHours = hours
+                    notificationPermissionLauncher.launch(
+                        Manifest.permission.POST_NOTIFICATIONS,
+                    )
+                } else {
+                    viewModel.onConfirmReminder(hours)
+                }
+            },
+            onRemove = { viewModel.onRemoveReminder(draft.noteId) },
+            onCancel = viewModel::onDismissReminderEditor,
+            modifier = modifier,
+        )
+        return
     }
 
     LaunchedEffect(voiceState) {
@@ -84,6 +130,13 @@ fun HomeScreen(
     LaunchedEffect(permissionDenied) {
         if (permissionDenied) {
             snackbarHostState.showSnackbar("Microphone permission is required")
+        }
+    }
+
+    LaunchedEffect(notificationsOff) {
+        if (notificationsOff) {
+            snackbarHostState.showSnackbar("Reminder saved — notifications are off")
+            notificationsOff = false
         }
     }
 
@@ -157,7 +210,12 @@ fun HomeScreen(
                         .padding(top = 12.dp),
                 ) {
                     items(items = notes, key = { it.id }) { note ->
-                        NoteRow(note = note, onDelete = { viewModel.delete(note.id) })
+                        NoteRow(
+                            note = note,
+                            now = viewModel.currentTimeMillis(),
+                            onDelete = { viewModel.delete(note.id) },
+                            onEditReminder = { viewModel.onEditReminder(note) },
+                        )
                     }
                 }
             }

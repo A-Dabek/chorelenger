@@ -2,13 +2,28 @@ package dev.dombeg.chorelenger
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeRight
+import android.content.Context
+import android.content.Intent
+import androidx.test.core.app.ApplicationProvider
+import dev.dombeg.chorelenger.reminders.HOUR_MILLIS
+import dev.dombeg.chorelenger.reminders.ReminderActionReceiver
+import dev.dombeg.chorelenger.reminders.ReminderAlarmReceiver
+import dev.dombeg.chorelenger.reminders.ReminderIntents
 import dev.dombeg.chorelenger.speech.VoiceError
 import dev.dombeg.chorelenger.ui.TestTags
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -34,6 +49,45 @@ class MainActivityE2ETest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    private fun recordNote(text: String) {
+        composeRule.onNodeWithTag(TestTags.RecordButton).performClick()
+        composeRule.runOnIdle { fake.emitResult(text) }
+        waitForText(text)
+    }
+
+    private fun noteId(text: String): Long = runBlocking {
+        containerRule.container.db.noteDao().observeAll().first()
+            .first { it.text == text }.id
+    }
+
+    private fun openReminderEditor() {
+        composeRule.onNodeWithTag(TestTags.NoteRow).performTouchInput {
+            swipeRight(startX = width * 0.1f, endX = width * 0.9f)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(TestTags.ReminderScreen)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun sendAlarm(noteId: Long) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.sendBroadcast(
+            Intent(context, ReminderAlarmReceiver::class.java)
+                .setAction(ReminderIntents.ACTION_REMINDER_ALARM)
+                .putExtra(ReminderIntents.EXTRA_NOTE_ID, noteId),
+        )
+    }
+
+    private fun sendAction(noteId: Long, action: String) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.sendBroadcast(
+            Intent(context, ReminderActionReceiver::class.java)
+                .setAction(action)
+                .putExtra(ReminderIntents.EXTRA_NOTE_ID, noteId),
+        )
     }
 
     @Test
@@ -106,5 +160,108 @@ class MainActivityE2ETest {
         waitForText("persist me")
 
         composeRule.onNodeWithText("persist me").assertIsDisplayed()
+    }
+
+    @Test
+    fun swipeSetReminderShowsBadgeAndSchedulesAlarm() {
+        recordNote("walk the dog")
+        val id = noteId("walk the dog")
+        val before = System.currentTimeMillis()
+        openReminderEditor()
+
+        composeRule.onNodeWithTag(TestTags.ReminderHoursField).performTextClearance()
+        composeRule.onNodeWithTag(TestTags.ReminderHoursField).performTextInput("2")
+        composeRule.onNodeWithTag(TestTags.ReminderConfirmButton).performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(TestTags.ReminderBadge)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag(TestTags.ReminderBadge).assertIsDisplayed()
+
+        val triggerAt = containerRule.container.fakeScheduler.scheduled[id]
+        assertNotNull(triggerAt)
+        assertTrue(triggerAt!! >= before + 2L * HOUR_MILLIS)
+        assertTrue(triggerAt <= System.currentTimeMillis() + 2L * HOUR_MILLIS + 60_000L)
+        assertEquals(triggerAt, runBlocking { containerRule.container.db.noteDao().getById(id)!!.reminderAt })
+    }
+
+    @Test
+    fun reminderSurvivesActivityRecreation() {
+        recordNote("persist reminder")
+        val id = noteId("persist reminder")
+        openReminderEditor()
+        composeRule.onNodeWithTag(TestTags.ReminderConfirmButton).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(TestTags.ReminderBadge)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        val triggerAt = containerRule.container.fakeScheduler.scheduled[id]
+
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(TestTags.ReminderBadge)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(triggerAt, runBlocking { containerRule.container.db.noteDao().getById(id)!!.reminderAt })
+    }
+
+    @Test
+    fun alarmBroadcastShowsNotificationAndMarksNotified() {
+        recordNote("alarm note")
+        val id = noteId("alarm note")
+        runBlocking {
+            containerRule.container.db.noteDao().setReminder(id, System.currentTimeMillis() - 1_000L)
+        }
+
+        sendAlarm(id)
+
+        composeRule.waitUntil(5_000) {
+            containerRule.container.fakeNotifier.shown.any { it.id == id }
+        }
+        assertNotNull(
+            runBlocking { containerRule.container.db.noteDao().getById(id)!!.reminderNotifiedAt },
+        )
+    }
+
+    @Test
+    fun doneBroadcastDeletesReminderAndCancelsAlarm() {
+        recordNote("done note")
+        val id = noteId("done note")
+        runBlocking {
+            containerRule.container.db.noteDao().setReminder(id, System.currentTimeMillis() - 1_000L)
+        }
+
+        sendAction(id, ReminderIntents.ACTION_REMINDER_DONE)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("done note").fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.waitUntil(5_000) {
+            containerRule.container.fakeScheduler.cancels.contains(id)
+        }
+    }
+
+    @Test
+    fun snoozeBroadcastReschedulesAndKeepsNote() {
+        recordNote("snooze note")
+        val id = noteId("snooze note")
+        runBlocking {
+            containerRule.container.db.noteDao().setReminder(id, System.currentTimeMillis() - 1_000L)
+        }
+        val before = System.currentTimeMillis()
+
+        sendAction(id, ReminderIntents.ACTION_REMINDER_SNOOZE)
+
+        composeRule.waitUntil(5_000) {
+            containerRule.container.fakeScheduler.scheduled[id]?.let {
+                it >= before + 24L * HOUR_MILLIS
+            } ?: false
+        }
+        val note = runBlocking { containerRule.container.db.noteDao().getById(id) }
+        assertNotNull(note)
+        assertTrue(note!!.reminderAt!! >= before + 24L * HOUR_MILLIS)
+        composeRule.onNodeWithText("snooze note").assertIsDisplayed()
     }
 }

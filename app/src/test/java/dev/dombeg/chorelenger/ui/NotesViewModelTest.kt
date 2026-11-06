@@ -1,11 +1,17 @@
 package dev.dombeg.chorelenger.ui
 
+import androidx.lifecycle.ViewModelStore
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.dombeg.chorelenger.MainDispatcherRule
 import dev.dombeg.chorelenger.data.AppDatabase
+import dev.dombeg.chorelenger.data.Note
 import dev.dombeg.chorelenger.data.NoteDao
+import dev.dombeg.chorelenger.reminders.FakeReminderNotifier
+import dev.dombeg.chorelenger.reminders.FakeReminderScheduler
+import dev.dombeg.chorelenger.reminders.HOUR_MILLIS
+import dev.dombeg.chorelenger.reminders.ReminderActions
 import dev.dombeg.chorelenger.speech.FakeTranscriptionService
 import dev.dombeg.chorelenger.speech.VoiceError
 import dev.dombeg.chorelenger.speech.VoiceState
@@ -35,6 +41,12 @@ class NotesViewModelTest {
     private lateinit var db: AppDatabase
     private lateinit var dao: NoteDao
     private lateinit var fake: FakeTranscriptionService
+    private lateinit var scheduler: FakeReminderScheduler
+    private lateinit var notifier: FakeReminderNotifier
+    private lateinit var actions: ReminderActions
+    private var nowMillis = 1_000_000L
+    private val viewModelStore = ViewModelStore()
+    private var viewModelCount = 0
 
     @Before
     fun setUp() {
@@ -44,14 +56,22 @@ class NotesViewModelTest {
         ).allowMainThreadQueries().build()
         dao = db.noteDao()
         fake = FakeTranscriptionService()
+        scheduler = FakeReminderScheduler()
+        notifier = FakeReminderNotifier()
+        actions = ReminderActions(dao, scheduler, notifier, now = { nowMillis })
     }
 
     @After
     fun tearDown() {
+        // Cancel every ViewModel scope before the Main dispatcher rule resets.
+        viewModelStore.clear()
         db.close()
     }
 
-    private fun viewModel() = NotesViewModel(dao, fake)
+    private fun viewModel(): NotesViewModel =
+        NotesViewModel(dao, fake, actions, now = { nowMillis }).also {
+            viewModelStore.put("vm-${viewModelCount++}", it)
+        }
 
     @Test
     fun finalResultInsertsTrimmedNoteAndResetsToIdle() = runTest {
@@ -159,5 +179,106 @@ class NotesViewModelTest {
             .apply { isAccessible = true }
         onCleared.invoke(vm)
         assertEquals(1, fake.releaseCount)
+    }
+
+    @Test
+    fun editOrdinaryNoteDefaultsToTwentyFourHours() = runTest {
+        val id = dao.insert(Note(text = "water plants", createdAt = 1L))
+        val vm = viewModel()
+
+        vm.onEditReminder(dao.getById(id)!!)
+
+        val draft = vm.reminderDraft.value!!
+        assertEquals(id, draft.noteId)
+        assertEquals(24, draft.initialHours)
+        assertFalse(draft.hasReminder)
+    }
+
+    @Test
+    fun editExistingReminderRoundsRemainingHoursUp() = runTest {
+        val id = dao.insert(
+            Note(
+                text = "water plants",
+                createdAt = 1L,
+                reminderAt = nowMillis + 5L * HOUR_MILLIS + 60_000L,
+            ),
+        )
+        val vm = viewModel()
+
+        vm.onEditReminder(dao.getById(id)!!)
+
+        val draft = vm.reminderDraft.value!!
+        assertEquals(6, draft.initialHours)
+        assertTrue(draft.hasReminder)
+    }
+
+    @Test
+    fun confirmPersistsSchedulesAndClosesDraft() = runTest {
+        val id = dao.insert(Note(text = "water plants", createdAt = 1L))
+        val vm = viewModel()
+        vm.onEditReminder(dao.getById(id)!!)
+
+        vm.onConfirmReminder(2)
+        advanceUntilIdle()
+
+        val expected = nowMillis + 2L * HOUR_MILLIS
+        assertEquals(expected, dao.getById(id)!!.reminderAt)
+        assertEquals(expected, scheduler.scheduled[id])
+        assertEquals(null, vm.reminderDraft.value)
+    }
+
+    @Test
+    fun dismissEditorLeavesNoteUnchanged() = runTest {
+        val id = dao.insert(Note(text = "water plants", createdAt = 1L))
+        val vm = viewModel()
+        vm.onEditReminder(dao.getById(id)!!)
+
+        vm.onDismissReminderEditor()
+        advanceUntilIdle()
+
+        assertEquals(null, vm.reminderDraft.value)
+        assertEquals(null, dao.getById(id)!!.reminderAt)
+    }
+
+    @Test
+    fun removeReminderKeepsNoteAndCancelsAlarm() = runTest {
+        val id = dao.insert(
+            Note(
+                text = "water plants",
+                createdAt = 1L,
+                reminderAt = nowMillis + HOUR_MILLIS,
+            ),
+        )
+        val vm = viewModel()
+        vm.onEditReminder(dao.getById(id)!!)
+
+        vm.onRemoveReminder(id)
+        advanceUntilIdle()
+
+        val note = dao.getById(id)!!
+        assertEquals(null, note.reminderAt)
+        assertEquals(null, note.reminderNotifiedAt)
+        assertTrue(scheduler.cancels.contains(id))
+        assertTrue(notifier.cancels.contains(id))
+        assertEquals(null, vm.reminderDraft.value)
+    }
+
+    @Test
+    fun deleteReminderCancelsAlarmAndNotification() = runTest {
+        val id = dao.insert(
+            Note(
+                text = "water plants",
+                createdAt = 1L,
+                reminderAt = nowMillis + HOUR_MILLIS,
+            ),
+        )
+        val vm = viewModel()
+
+        vm.delete(id)
+        advanceUntilIdle()
+
+        assertEquals(null, dao.getById(id))
+        assertTrue(scheduler.cancels.contains(id))
+        assertTrue(notifier.cancels.contains(id))
     }
 }
