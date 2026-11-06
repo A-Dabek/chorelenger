@@ -4,10 +4,12 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Note::class], version = 2, exportSchema = false)
+@Database(entities = [Note::class], version = 3, exportSchema = false)
+@TypeConverters(RecurrenceConverters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
 
@@ -21,6 +23,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notes ADD COLUMN recurrenceUnit TEXT")
+                db.execSQL("ALTER TABLE notes ADD COLUMN recurrenceCount INTEGER")
+                db.execSQL("ALTER TABLE notes ADD COLUMN recurrenceMode TEXT")
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -31,7 +41,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DB_NAME,
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { instance = it }
             }

@@ -1,6 +1,10 @@
 package dev.dombeg.chorelenger.reminders
 
 import dev.dombeg.chorelenger.data.NoteDao
+import dev.dombeg.chorelenger.data.RecurrenceMode
+import dev.dombeg.chorelenger.data.RecurrenceUnit
+import dev.dombeg.chorelenger.data.isPeriodic
+import java.time.ZoneId
 
 /**
  * Reminder use-cases. Pure coroutine orchestration over the DAO and the two
@@ -11,11 +15,25 @@ class ReminderActions(
     private val scheduler: ReminderScheduler,
     private val notifier: ReminderNotifier,
     private val now: () -> Long = System::currentTimeMillis,
+    private val zone: ZoneId = ZoneId.systemDefault(),
 ) {
 
-    suspend fun setReminder(noteId: Long, triggerAt: Long) {
-        noteDao.setReminder(noteId, triggerAt)
+    suspend fun setOneTimeReminder(noteId: Long, triggerAt: Long) {
+        noteDao.setOneTimeReminder(noteId, triggerAt)
+        notifier.cancel(noteId)
         scheduler.schedule(noteId, triggerAt)
+    }
+
+    suspend fun setPeriodicReminder(
+        noteId: Long,
+        firstAt: Long,
+        unit: RecurrenceUnit,
+        count: Int,
+        mode: RecurrenceMode,
+    ) {
+        noteDao.setPeriodicReminder(noteId, firstAt, unit, count, mode)
+        notifier.cancel(noteId)
+        scheduler.schedule(noteId, firstAt)
     }
 
     suspend fun clearReminder(noteId: Long) {
@@ -47,15 +65,27 @@ class ReminderActions(
     }
 
     suspend fun onDone(noteId: Long) {
-        deleteNote(noteId)
+        val note = noteDao.getById(noteId) ?: return
+        val spec = note.recurrenceSpec
+        if (!note.isPeriodic || spec == null) {
+            deleteNote(noteId)
+            return
+        }
+        val previousDue = note.reminderAt ?: return
+        val next = nextOccurrence(spec, previousDue, now(), zone)
+        noteDao.advanceReminder(noteId, next)
+        scheduler.schedule(noteId, next)
+        notifier.cancel(noteId)
     }
 
     suspend fun onSnooze(noteId: Long) {
         val note = noteDao.getById(noteId) ?: return
-        val triggerAt = now() + SNOOZE_HOURS * HOUR_MILLIS
-        noteDao.setReminder(note.id, triggerAt)
-        scheduler.schedule(note.id, triggerAt)
-        notifier.cancel(note.id)
+        val next = now() + SNOOZE_HOURS * HOUR_MILLIS
+        // Recurrence fields stay untouched; the snoozed due time becomes the
+        // new previous due for absolute counting.
+        noteDao.advanceReminder(noteId, next)
+        scheduler.schedule(noteId, next)
+        notifier.cancel(noteId)
     }
 
     suspend fun rescheduleAll() {

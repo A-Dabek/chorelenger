@@ -4,9 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.dombeg.chorelenger.data.Note
 import dev.dombeg.chorelenger.data.NoteDao
+import dev.dombeg.chorelenger.data.RecurrenceMode
+import dev.dombeg.chorelenger.data.RecurrenceUnit
 import dev.dombeg.chorelenger.reminders.DEFAULT_REMINDER_HOURS
+import dev.dombeg.chorelenger.reminders.RecurrenceSpec
 import dev.dombeg.chorelenger.reminders.ReminderActions
+import dev.dombeg.chorelenger.reminders.isValidFirstExecution
+import dev.dombeg.chorelenger.reminders.isValidRecurrenceCount
 import dev.dombeg.chorelenger.reminders.isValidReminderHours
+import dev.dombeg.chorelenger.reminders.recurrenceSpec
 import dev.dombeg.chorelenger.reminders.remainingReminderHours
 import dev.dombeg.chorelenger.reminders.reminderTriggerAt
 import dev.dombeg.chorelenger.speech.TranscriptionService
@@ -22,9 +28,25 @@ import kotlinx.coroutines.launch
 data class ReminderDraft(
     val noteId: Long,
     val text: String,
+    val existingReminderAt: Long?,
+    val existingRecurrence: RecurrenceSpec?,
     val initialHours: Int,
-    val hasReminder: Boolean,
-)
+) {
+    val hasReminder: Boolean get() = existingReminderAt != null
+    val isPeriodic: Boolean get() = existingRecurrence != null
+}
+
+/** What the wizard confirms: either a one-time delay or a periodic rule. */
+sealed interface ReminderSelection {
+    data class OneTime(val hours: Int) : ReminderSelection
+
+    data class Periodic(
+        val firstAt: Long,
+        val unit: RecurrenceUnit,
+        val count: Int,
+        val mode: RecurrenceMode,
+    ) : ReminderSelection
+}
 
 /**
  * Plain constructor injection, no framework. The Android collaborators are
@@ -37,7 +59,10 @@ class NotesViewModel(
     private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
 
-    val notes: StateFlow<List<Note>> = noteDao.observeAll()
+    val notes: StateFlow<List<Note>> = noteDao.observeActive()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val periodicNotes: StateFlow<List<Note>> = noteDao.observePeriodic()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** True when the device has a usable recognizer; captured once. */
@@ -90,8 +115,9 @@ class NotesViewModel(
         _reminderDraft.value = ReminderDraft(
             noteId = note.id,
             text = note.text,
+            existingReminderAt = note.reminderAt,
+            existingRecurrence = note.recurrenceSpec,
             initialHours = initialHours,
-            hasReminder = note.reminderAt != null,
         )
     }
 
@@ -99,12 +125,32 @@ class NotesViewModel(
         _reminderDraft.value = null
     }
 
-    fun onConfirmReminder(hours: Int) {
+    fun onConfirmReminder(selection: ReminderSelection) {
         val draft = _reminderDraft.value ?: return
-        if (!isValidReminderHours(hours)) return
-        val triggerAt = reminderTriggerAt(now(), hours)
-        _reminderDraft.value = null
-        viewModelScope.launch { reminderActions.setReminder(draft.noteId, triggerAt) }
+        when (selection) {
+            is ReminderSelection.OneTime -> {
+                if (!isValidReminderHours(selection.hours)) return
+                val triggerAt = reminderTriggerAt(now(), selection.hours)
+                _reminderDraft.value = null
+                viewModelScope.launch {
+                    reminderActions.setOneTimeReminder(draft.noteId, triggerAt)
+                }
+            }
+            is ReminderSelection.Periodic -> {
+                if (!isValidRecurrenceCount(selection.unit, selection.count)) return
+                if (!isValidFirstExecution(selection.firstAt, now())) return
+                _reminderDraft.value = null
+                viewModelScope.launch {
+                    reminderActions.setPeriodicReminder(
+                        draft.noteId,
+                        selection.firstAt,
+                        selection.unit,
+                        selection.count,
+                        selection.mode,
+                    )
+                }
+            }
+        }
     }
 
     fun onRemoveReminder(noteId: Long) {

@@ -7,15 +7,17 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import dev.dombeg.chorelenger.R
 import dev.dombeg.chorelenger.data.Note
+import dev.dombeg.chorelenger.data.isPeriodic
 
 /** Local high-importance reminder notification with Done / Snooze actions. */
 class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
 
     override fun show(note: Note) {
         ensureChannel(context)
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val periodic = note.isPeriodic
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_alarm)
-            .setContentTitle("Reminder")
+            .setContentTitle(if (periodic) "Repeating reminder" else "Reminder")
             .setContentText(note.text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(note.text))
             .setAutoCancel(true)
@@ -24,8 +26,8 @@ class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
             .setContentIntent(ReminderIntents.content(context, note.id))
             .addAction(0, "Done", ReminderIntents.done(context, note.id))
             .addAction(0, "Snooze 24 h", ReminderIntents.snooze(context, note.id))
-            .build()
-        NotificationManagerCompat.from(context).notify(note.id.toInt(), notification)
+        note.recurrenceSpec?.let { builder.setSubText(recurrenceLabel(it)) }
+        NotificationManagerCompat.from(context).notify(note.id.toInt(), builder.build())
     }
 
     override fun cancel(noteId: Long) {

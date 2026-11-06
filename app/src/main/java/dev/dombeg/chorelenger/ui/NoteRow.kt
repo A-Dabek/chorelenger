@@ -43,6 +43,7 @@ fun NoteRow(
     onDelete: () -> Unit,
     onEditReminder: () -> Unit,
     modifier: Modifier = Modifier,
+    recurrenceLabel: String? = null,
 ) {
     val currentOnEdit by rememberUpdatedState(onEditReminder)
     val dismissState = rememberSwipeToDismissBoxState(
@@ -88,6 +89,14 @@ fun NoteRow(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = note.text, style = MaterialTheme.typography.bodyLarge)
+                if (recurrenceLabel != null) {
+                    Text(
+                        text = recurrenceLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.testTag(TestTags.RecurrenceBadge),
+                    )
+                }
                 val reminderAt = note.reminderAt
                 if (reminderAt != null) {
                     Text(
