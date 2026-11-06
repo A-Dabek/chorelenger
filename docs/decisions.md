@@ -131,3 +131,66 @@ TalkBack users cannot reach the editor. A visible fallback remains out of scope.
 **Consequence.** No completed-reminder history and no per-reminder snooze
 duration, keeping the model and UI small.
 
+## 15. Three nullable recurrence columns on `Note` + migration 3
+
+**Context.** A periodic reminder is still an ordinary note with a due time. A
+separate recurrence table would add joins and lifecycle duplication.
+**Decision.** Add nullable `recurrenceUnit`, `recurrenceCount`, and
+`recurrenceMode` columns, bump `AppDatabase` to version 3, and ship
+`MIGRATION_2_3`.
+**Consequence.** One entity, one DAO, minimal code. Existing one-time reminders
+and ordinary notes keep working with `NULL` recurrence columns. The migration is
+covered by raw-v2 and raw-v1 Robolectric tests.
+
+## 16. Absolute vs relative is one mode property
+
+**Context.** The product asks for two ways to count the next occurrence, but
+every field, action, table, and notification is otherwise identical.
+**Decision.** Store only `recurrenceMode = ABSOLUTE | RELATIVE`; one pure
+function chooses the base time (previous due vs Done tap).
+**Consequence.** No separate recurrence structures or branches outside
+`nextOccurrence`. Because there is no separate anchor column, a 24 h snooze
+becomes the new previous due for absolute counting, shifting the chain by 24 h.
+
+## 17. Absolute mode skips all past occurrences
+
+**Context.** A recurring chore may be completed late or after several missed
+intervals.
+**Decision.** In `ABSOLUTE`, keep adding the interval to the previous due until
+the result is strictly after the Done tap; schedule only that next future
+occurrence.
+**Consequence.** No catch-up notification burst and no completed-occurrence
+history. Month-end dates clamp and drift (`Jan 31 → Feb 28 → Mar 28`); an anchor
+column would be needed to preserve the original day-of-month.
+
+## 18. Periodic Done advances; one-time Done deletes
+
+**Context.** A recurring chore must survive a completion, while short-lived
+notes should not.
+**Decision.** `onDone` branches on `isPeriodic`: periodic items get the next
+due and keep their note; one-time items are deleted.
+**Consequence.** The notification action layer stays unaware of completion
+semantics; `ReminderActions` is the only place that decides.
+
+## 19. Repeats tab separates periodic items from the microphone list
+
+**Context.** Periodic chores are a different mental model from quick notes and
+should not be mixed with the record-first list.
+**Decision.** Add a bottom Material 3 `NavigationBar` with **Notes** and
+**Repeats**. Notes keeps the record button, ordinary notes, and one-time
+reminders; Repeats shows periodic items by next due and has no microphone.
+**Consequence.** No navigation dependency and no change to the recording flow.
+A periodic item whose recurrence is removed returns to Notes as an ordinary
+note.
+
+## 20. One-time reminders keep the hours-from-now editor
+
+**Context.** The existing one-time flow is simple and understood by the user.
+**Decision.** Keep the numeric hours field, presets, bounds, and due preview
+computed from **now** for one-time reminders. Only the periodic branch gains
+date/time and recurrence steps.
+**Consequence.** Existing behaviour and tests remain valid behind the new type
+step; periodic scheduling gets richer input without complicating one-time
+reminders.
+
+

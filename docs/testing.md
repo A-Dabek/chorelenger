@@ -26,32 +26,38 @@ tests are the exception. Fake only the Android boundaries.
 ## What is tested where
 
 - **Unit** — `VoiceError` error-code mapping (`VoiceErrorMappingTest`), note
-  sanitization (`SanitizeNoteTextTest`), and reminder time math/labels
-  (`ReminderTimeTest`): trigger math, bounds, remaining-hours rounding, future /
-  near-future / overdue labels.
+  sanitization (`SanitizeNoteTextTest`), reminder time math/labels
+  (`ReminderTimeTest`), and recurrence math/labels (`RecurrenceTest`): relative
+  and absolute days/weeks/months, late-completion skipping, month-end clamping
+  and drift, DST wall-clock preservation, descriptions, count and first-due
+  validation.
 - **Integration (Robolectric)** —
-  - `NoteDaoTest`: insert, order, delete, `getById`, `allReminders`, reminder
-    setters, reminder-first ordering.
-  - `AppDatabaseMigrationTest`: raw v1 database → `MIGRATION_1_2` → note survives,
-    new columns are null.
+  - `NoteDaoTest`: insert, order, delete, `getById`, `allReminders`, one-time and
+    periodic setters, advance, clear, active/periodic queries and ordering.
+  - `AppDatabaseMigrationTest`: raw v1 → v3 and raw v2 → v3; existing notes and
+    one-time reminders survive, recurrence columns are null.
   - `ReminderActionsTest`: real Room + fake scheduler/notifier + fake clock:
-    alarm fires once, duplicate alarm ignored, stale alarm reschedules, boot
-    reschedule, snooze, done, clear, delete.
+    one-time/periodic setters, alarm fires once, duplicate alarm ignored, stale
+    alarm reschedules, boot reschedule, one-time Done deletes, absolute/relative
+    periodic Done advances, missed occurrences skipped, snooze keeps recurrence,
+    clear/delete cancel.
   - `AlarmReminderSchedulerTest` / `AndroidReminderNotifierTest`: ShadowAlarmManager
-    and ShadowNotificationManager boundaries (channel, title, big text, actions,
-    cancel).
+    and ShadowNotificationManager boundaries (channel, one-time/periodic title,
+    subtext, actions, cancel).
   - `NotesViewModelTest`: result→insert, blank rejected, order, delete, button
-    toggle, release, reminder draft defaults, confirm, dismiss, remove.
+    toggle, release, draft defaults, recurrence prefill, one-time/periodic
+    confirm, validation, type switching, remove.
   - `HomeScreenTest`: record→note, delete→empty, partial text, newest-first,
-    unavailable notice, swipe→editor, confirm→badge, cancel, prefill, remove,
-    delete cancellation, invalid hours.
+    unavailable notice, tabs, swipe→type step, one-time hours flow, periodic
+    creation→Repeats, recurrence label, periodic→one-time, one-time→periodic,
+    remove repeat, invalid hours/count.
   - `DefaultAppContainerTest`: real wiring.
 - **E2E (instrumented)** — `MainActivityE2ETest`: record→note→idle, delete,
   newest-first, network-error snackbar + retry, permission-denied message,
-  notes surviving Activity recreation, swipe→set reminder→badge, reminder
-  surviving recreation, alarm broadcast→notification, Done broadcast→delete,
-  Snooze broadcast→reschedule. `NoteDaoInstrumentedTest` mirrors the critical
-  DAO path, including reminder columns.
+  notes surviving Activity recreation, one-time reminder journeys, periodic
+  creation and tab persistence, periodic Done advancing, periodic Snooze,
+  alarm broadcast→notification. `NoteDaoInstrumentedTest` mirrors the critical
+  DAO path, including recurrence columns.
 
 ## The only fakes
 
@@ -111,17 +117,36 @@ installs collide with `INSTALL_FAILED_DUPLICATE_PACKAGE`.
 - [ ] Delete → gone immediately and after restart.
 - [ ] Airplane mode → error snackbar, retry works.
 - [ ] Device without speech service → button disabled with explanation.
-- [ ] Swipe a note right → editor opens with 24 h; confirm → due label appears
-      and the reminder sorts above ordinary notes.
+- [ ] Swipe a note right → wizard opens on the type step with 24 h default for
+      one-time.
+- [ ] Choose One-time, confirm → due label appears and the reminder sorts above
+      ordinary notes.
 - [ ] Wait until due → heads-up notification shows the note text and both
       actions.
-- [ ] **Done** → notification disappears and the row is deleted.
+- [ ] **Done** (one-time) → notification disappears and the row is deleted.
 - [ ] **Snooze 24 h** → notification disappears; row shows a due time 24 h out.
-- [ ] Reboot with a future reminder → notification still fires.
+- [ ] Swipe a note right → choose Periodic.
+- [ ] Pick a first date/time in the future; set `2 days`; choose Absolute.
+- [ ] Confirm → item disappears from Notes and appears in Repeats; no mic on
+      the Repeats tab.
+- [ ] Swipe the periodic row → editor opens with the current values; Cancel
+      leaves it unchanged.
+- [ ] Wait until due → notification title `Repeating reminder`, both actions.
+- [ ] Done (periodic) → item remains in Repeats with the next due advanced by
+      the interval.
+- [ ] Snooze 24 h (periodic) → notification disappears; item due moves 24 h out.
+- [ ] Absolute item missed several intervals → Done skips all missed
+      occurrences and schedules the next future one.
+- [ ] Relative item done late → next due is counted from the Done tap.
+- [ ] Switch a periodic item to one-time → it returns to Notes.
+- [ ] Remove repeat → item becomes an ordinary note in Notes.
+- [ ] Reboot with a future periodic reminder → notification still fires.
+- [ ] Deny `POST_NOTIFICATIONS` → periodic item is saved and visible in
+      Repeats.
+- [ ] Existing one-time reminder from the old version still appears in Notes and
+      fires as before.
+- [ ] Delete a periodic item → no future notification.
 - [ ] Reminder became due while powered off → delivered once after boot, not
       duplicated on later boots.
-- [ ] Deny `POST_NOTIFICATIONS` → reminder is saved; the app explains that
-      notifications are off; row/badge still correct.
-- [ ] Delete a reminder → no notification later.
 - [ ] Device in Doze → reminder still arrives (may drift a few minutes).
 - [ ] Swipe starting away from the screen edge does not trigger system back.
